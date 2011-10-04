@@ -55,6 +55,22 @@
       }
   }
 
+  function walkDom(element, func, maxdepth, depth) {
+    depth = depth || 0
+    var n = element.firstChild
+    
+    while(n) {
+      func(n)
+
+      if(!maxdepth || depth < maxdepth) {
+        walkDom(n, func, maxdepth, depth+1)
+      }
+      n = n.nextSibling()
+    }
+    
+  }
+
+
   function parseDocument() {
     parseObjectTree(document.documentElement, {});
   }
@@ -67,6 +83,7 @@
     isProperty = isProperty || false
     var n = el.firstChild
 
+    // TODO: Break out DOM walker (reuse by property parsing/value pattern?)
     while (n) {
       if (n.nodeType == nodeTypes.ELEMENT_NODE) {
 
@@ -76,7 +93,13 @@
 
         // IF Microformat:
         if (regexen.OBJECT.test(n.className) {
-          subobject = parseObjectTree(n, subobject, !!matchedClasses.length)
+          // TODO: Get all object types
+          subobject = parseObjectTree(n, { type: [], properties: {} }, !!matchedClasses.length)
+
+          // IF: No explicit properties declared, imply format 'name' from content.
+          if({} == subobject.properties) {
+            subobject.properties.name = [propertyParsers.p(n)]
+          }
         }
 
         // Continue: Property assignments
@@ -122,10 +145,11 @@
   function assignValue(object, property, literal, struct) {
     var val = {value:literal}
     if (struct) {
-      val.object = struct
+      val.type = struct.type
+      val.properties = struct.properties
     }
-    object[property] = object[property] || []
-    object[property].push(val)
+    object.properties[property] = object.properties[property] || []
+    object.properties[property].push(val)
   }
   
   function parseDateTime() {
