@@ -49,7 +49,7 @@
       }
     , dt: function(el) {
         // <date>
-        // value class + concatination
+        // value class + concatenation
         // -> p()
         // clean up ISO format
       }
@@ -65,7 +65,7 @@
     parseObjectTree(document.documentElement);
   }
 
-  // Walk the an element tree for properties
+  // Walk an element tree for properties
   // el: Root element to start from
   // obj: the object to write properties to
   // standalone: is this a standalone microformat, or augmenting a property?
@@ -98,6 +98,8 @@
           // IF: No explicit properties declared, imply format 'name' from content.
           if({} == subobject.properties) {
             assignValue(subobject, 'name', propertyParsers.p(n))
+            // TBI ... and 'url' from A href
+            // TBI ... and 'photo' from IMG src (as element itself or only child)
           }
         }
 
