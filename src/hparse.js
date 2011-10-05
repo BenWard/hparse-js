@@ -1,6 +1,6 @@
 /** h-parse */
-/* A microformats2 parser, with the ability to use microformats-shiv as a module
-   to support existing microformats.
+/* A microformats2 DOM parser, with the ability to use microformats-shiv as a
+   module to support existing microformats.
    
    MIT License
    
@@ -11,15 +11,18 @@
   
   var version = 'v0.0.1'
     , regexen = {
-        OBJECT: /(^| )h-(a-zA-Z]-)+( |$)/
-      , PROPERTY: /(^| )(p|u||dt|e)-([a-z][A-Z]-)+( |$)/
-      , LEGACY: /(^| )(vcard|vevent|vcalendar|hreview|hentry|hfeed|hrecipe)( |$)/
+        OBJECT: /\b(h\-[\w\-]+)\b/g
+      , PROPERTY: /\b(p|u|dt|e)-([\w\-]+)\b/g
+      , LEGACY: /\b(vcard|vevent|vcalendar|hreview|hentry|hfeed|hrecipe)\b/g
       }
     , nodeTypes = {
         ELEMENT_NODE: 1
     }
-    , standaloneObjects
-    , allObjects
+    , indexes = {
+        standalone: []
+      , all: []
+      , byID: {} 
+    }
   
   // iterate on every node
   // find h-*
@@ -43,74 +46,66 @@
         // if <object> -> data
         // -> p()
         // Validate as URI?
-    }
+      }
     , dt: function(el) {
         // <date>
         // value class + concatination
         // -> p()
         // clean up ISO format
-    }
+      }
     , e: function(el) {
         return el.innerHTML
       }
-  }
-
-  function walkDom(element, func, maxdepth, depth) {
-    depth = depth || 0
-    var n = element.firstChild
-    
-    while(n) {
-      func(n)
-
-      if(!maxdepth || depth < maxdepth) {
-        walkDom(n, func, maxdepth, depth+1)
+    , rel: function(el) {
+        return el.href
       }
-      n = n.nextSibling()
-    }
-    
   }
-
 
   function parseDocument() {
-    parseObjectTree(document.documentElement, {});
+    parseObjectTree(document.documentElement);
   }
 
   // Walk the an element tree for properties
   // el: Root element to start from
   // obj: the object to write properties to
   // standalone: is this a standalone microformat, or augmenting a property?
-  function parseObjectTree(el, obj, standalone) {
-    isProperty = isProperty || false
-    var n = el.firstChild
+  function parseObjectTree(el, obj, standalone, depth) {
+    standalone = standalone || true
+    depth = depth || 0
 
-    // TODO: Break out DOM walker (reuse by property parsing/value pattern?)
-    while (n) {
+    // Look for itemref/include pattern
+    if(itemref) {
+      var target = document.getElementById(itemref)
+        , ref = parseObjectTree(target)
+    }
+
+    var n = el
+    while(n) {
+
       if (n.nodeType == nodeTypes.ELEMENT_NODE) {
 
-        var matchedClasses = n.className.match(regexen.PROPERTY)
-          , values = {} // parsed values (by type)
+        var matchedProperties = regexen.PROPERTY.test(n.className)
+          , relValues = n.rel || ""
+          , values = {} // already parsed values (by type) (saves doing p- twice for two properties)
           , subobject = undefined
+          , mfo = false // set true if we parse another microformat as a property
 
-        // IF Microformat:
-        if (regexen.OBJECT.test(n.className) {
-          // TODO: Get all object types
-          subobject = parseObjectTree(n, { type: [], properties: {} }, !!matchedClasses.length)
+        // If a new microformat, parse it as an opaque blob:
+        if (regexen.OBJECT.test(n.className)) {
+          var types = n.className.match(regexen.OBJECT)
+          subobject = parseObjectTree(n, createObject(types), !matchedProperties)
 
           // IF: No explicit properties declared, imply format 'name' from content.
           if({} == subobject.properties) {
-            subobject.properties.name = [propertyParsers.p(n)]
+            assignValue(subobject, 'name', propertyParsers.p(n))
           }
         }
 
         // Continue: Property assignments
-        for (var i=0; match = matchedClasses[i]; i++) {
+        while (match = regexen.PROPERTY.exec(n.className)) {
 
-          var type = match[1]
-            , property = match[2]
-
-          // So create new object, set those types, run recursive parse, store object
-          // Then, for any p- objects that follow, extract text value (from p handler) AND append the mfo (and set the mfo bit.)
-          // If no mfo bit set, then append format object to standalone[]
+          var type = match[0]
+            , property = match[0]
 
           // If we haven't already extracted a value for this type:
           if (!values[type]) {
@@ -119,25 +114,63 @@
           }
 
           if(values[type]) {
-            assignValue(obj, property, values[type], subobject)
+            if('p' == type) {
+              // For any p- objects, extract text value (from p handler) AND append the mfo
+              mfo = mfo || !!subobject
+              assignValue(obj, property, values[type], subobject)
+            }
+            else {
+              assignValue(obj, property, values[type])
+            }
           }
         }
-        // unless opaque microformat-object, continue parsing
-        if (!subobject) {
-          parseTree(n)
+        
+        // Continue: Parse rel values as properties
+        relValues = relValues.split(" ")
+        for(var i=0; rel = relValues[i]; i++) {
+          
+          // TODO: IMPLEMENTATION: If class properties will override rel properties:
+          if(obj.properties[rel]) {
+            continue;
+          }
+          else {
+            values['rel'] = values['rel'] || propertyParsers['rel'].call(n)
+            assignValue(obj, rel, values['rel'])
+          }
+        }
+
+        // unless we parsed an opaque microformat as a property, continue parsing down the tree:
+        if (!mfo && n.firstChild) {
+          parseObjectTree(n.firstChild, obj, standalone, depth+1)
         }
       }
-      n = n.nextSibling()
+      // don't crawl siblings of the initial root element
+      n = (depth) ? n.nextSibling : false
     }
-    // index this object
-    allObjects.push(obj)
+    
+    // index all objects
+    indexes.all.push(obj)
     
     // index standalone objects
     if(standalone) {
-      standaloneObjects.push(obj)
+      indexes.standalone.push(obj)
+    }
+    
+    // index object by ID (used by itemref and include-pattern)
+    if(el.id) {
+      indexes.byID[el.id] = obj
     }
 
     return obj
+  }
+
+
+  function createObject(types) {
+    return {
+        type: types
+      , properties: {}
+      , value: undefined
+    }
   }
 
   // Add a new value to an object property. Handle multiple values for the same
@@ -159,8 +192,6 @@
   function valueClassPattern() {
     
   }
-
-  
   
   exports.parse = function(root) {
     
