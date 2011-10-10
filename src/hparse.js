@@ -7,7 +7,12 @@
    (c) Ben Ward, 2011
 */
 
+var exports = exports || window.hparse
+
+
 !function(exports) {
+
+  exports = exports || {}
   
   var version = 'v0.0.1'
     , regexen = {
@@ -15,13 +20,20 @@
       , PROPERTY: /\b(p|u|dt|e)-([\w\-]+)\b/g
       , LEGACY: /\b(vcard|vevent|vcalendar|hreview|hentry|hfeed|hrecipe)\b/g
       }
-    , nodeTypes = {
+    , nodeTypes = { // Older versions of IE don't include the nodeType enum
         ELEMENT_NODE: 1
     }
     , indexes = {
         standalone: []
       , all: []
       , byID: {} 
+    }
+    , settings = { // settings for the parser. TODO: Add mechanism to actually override these
+        parsePubDateAttr: true // parse time/@pubdate as .dt-published
+      , parseRelAttr: true // parse @rel attributes as properties
+      , parseItemRefAttr: true // use microdata's itemref as per the include-pattern
+      , parseV1Microformats: false // parse v1 microformats as microformats-2 (TODO: requires extension with vocabulary mappings)
+      , parseWeakDates: false // attempt to parse any date format. Probably a bad thing to include, but documenting idea for now
     }
   
   // iterate on every node
@@ -138,6 +150,9 @@
             assignValue(obj, rel, values['rel'])
           }
         }
+        
+        // TODO: IDEA: Parse pubdate as dt-published?
+        
 
         // unless we parsed an opaque microformat as a property, continue parsing down the tree:
         if (!mfo && n.firstChild) {
@@ -201,4 +216,4 @@
     
   }
 
-}(hparse)
+}(exports || window.hparse)
