@@ -48,6 +48,8 @@ var exports = exports || window.hparse
       , parseItemRefAttr: true // use microdata's itemref as per the include-pattern
       , parseV1Microformats: false // parse v1 microformats as microformats-2 (TODO: requires extension with vocabulary mappings)
       , parseWeakDates: false // attempt to parse any date format. Probably a bad thing to include, but documenting idea for now
+      , forceValidUrls: true // validate and filter URL properties against a valid regex
+      , forceValidDates: true // validate and filter DT properties against a valid regex
     }
   
   // iterate on every node
