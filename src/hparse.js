@@ -69,11 +69,26 @@ var exports = exports || window.hparse
         // textContent || innerText
       }
     , u: function(el) {
-        // if <a> -> href
-        // if <img> -> src
-        // if <object> -> data
-        // -> p()
-        // Validate as URI?
+        var url
+        if ('A' == el.nodeName && el.href) {
+          url = a.href
+        }
+        else if('IMG' == el.nodeName) {
+          url = img.src
+        }
+        else if('OBJECT' == el.nodeName && el.data) {
+          url = el.data
+        }
+        else {
+          url = propertyParsers.p(el)
+        }
+
+        if(settings.validateUrlFormats && !regexen.URL.test(url)) {
+          return undefined
+        }
+        else {
+          return url
+        }
       }
     , dt: function(el) {
         // <date>
