@@ -17,8 +17,23 @@ var exports = exports || window.hparse
     , regexen = {
         OBJECT: /\b(h\-[\w\-]+)\b/g
       , PROPERTY: /\b(p|u|dt|e)-([\w\-]+)\b/g
+      , VALUE: /\bp-value\b/
       , LEGACY: /\b(vcard|vevent|vcalendar|hreview|hentry|hfeed|hrecipe)\b/g
-      }
+      , URL: /\b(?:(?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\((?:[^\s()<>]+|(\(?:[^\s()<>]+\)))*\))+(?:\((?:[^\s()<>]+|(?:\(?:[^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/i      
+        // URL regex by John Gruber: http://daringfireball.net/2010/07/improved_regex_for_matching_urls
+        // via JavaScript port by Alan Moore on Stack Overflow: http://stackoverflow.com/questions/4928345/help-making-a-universal-regex-javascript-compatible/4929179#4929179
+      , ISODATE: /\d{4}\-?((\d{2}\-?(\d{2})?|\d{3})?)?/
+        //        YEAR     MONTH    DATE  OR DOY     
+      , ISOTIME: /\d{2}\:?(\d{2}\:?(\d{2}\:?(\d{2})?)?)?/
+        //        HOUR     MIN      SEC      MS
+      , ISOTZ: /([\+\-]\d{2}\:?\d{2}|Z)/
+        //        TIMEZONE
+      , ISOFULL: regexSupplant(/#{ISODATE}(T#{ISOTIME}(#{ISOTZ})?)?/)
+        // A regex that matches the pattern of an ISO 8610 date. Note that it
+        // does not attempt to validate it as a real date.
+        // Should accept anything from "2011" to "2011-10-10T01:34:00:00-0800"
+        // Should also accept dates on tantek.com: e.g. 2010-245.
+    }
     , nodeTypes = { // Older versions of IE don't include the nodeType enum
         ELEMENT_NODE: 1
     }
