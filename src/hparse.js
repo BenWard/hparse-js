@@ -91,10 +91,21 @@ var exports = exports || window.hparse
         }
       }
     , dt: function(el) {
-        // <date>
-        // value class + concatenation
-        // -> p()
-        // clean up ISO format
+        var dt 
+        if('TIME' == el.nodeName) {
+          dt = el.getAttribute('datetime') || getTextContent(el)
+        }
+        else {
+          dt = parseDateTimeValuePattern(el) || propertyParsers.p(el)
+        }
+        // TODO: clean up ISO format? Is there anything that can be done for this?
+        
+        if(settings.forceValidDates && !regexen.ISOFULL.test(dt)) {
+          return undefined
+        }
+        else {
+          return dt
+        }
       }
     , e: function(el) {
         return el.innerHTML
@@ -104,11 +115,96 @@ var exports = exports || window.hparse
       }
   }
 
-  function parseDocument() {
-    parseObjectTree(document.documentElement);
+  // Util to combine regular expression fragments.
+  // Yanked from twitter-text.js: 
+  // <https://github.com/twitter/twitter-text-js/blob/master/twitter-text.js#L25>
+  // Licensed under the Apache License, Version 2.0
+  // TODO: Only actually using this once so far, with no need for flags, so possible 
+  function regexSupplant(regex, flags) {
+     flags = flags || ""
+
+     if (typeof regex !== "string") {
+       if (regex.global && flags.indexOf("g") < 0) {
+         flags += "g"
+       }
+       if (regex.ignoreCase && flags.indexOf("i") < 0) {
+         flags += "i"
+       }
+       if (regex.multiline && flags.indexOf("m") < 0) {
+         flags += "m"
+       }
+
+       regex = regex.source;
+     }
+
+     return new RegExp(regex.replace(/#\{(\w+)\}/g, function(match, name) {
+       var newRegex = regexen[name] || ""
+       if (typeof newRegex !== "string") {
+         newRegex = newRegex.source;
+       }
+       return newRegex;
+     }), flags)
+   }
+
+  function getTextContent(el) {
+    return el.textContent || el.innerText
   }
 
+  // Find all p-value children and return them
+  function parseValuePattern(el, depth) {
+    var values = []
+      , n = el
+    
+    while(n) {
+      if(/\bp-value\b/.test(n.className)) {
+        values.push(propertyParsers.p(n);)
+      }
+      // If this itself isn't another object property, then continue down the
+      // tree for values
+      if(!regexen.PROPERTY.test(n.className)) {
+        values.concat(parseDateTimeValuePattern(n.firstChild, depth+1))
+      }
+      n = (depth) ? n.nextSibling : undefined
+    }
+    return values
+  }
+
+  // Collects value class pattern descendents, and concatinates them to make an
+  // ISO date string.
+  function parseDateTimeValuePattern(el) {
+    var values = parseValuePattern(el)
+      , date
+      , time
+      , tz
+      , timestamp
+
+    for(v in values) {
+      if (regexen.ISODATE.test(v)) {
+        date = date || v
+      }
+      else if (regexen.ISOTIME.test(v)) {
+        time = time || v
+      }
+      else if (regexen.ISOTZ.test(v)) {
+        tz = tz || v
+      }
+    }
+    
+    if (date) {
+      timestamp = date
+      if (time) {
+        timestamp += "T" + time
+        if (tz) {
+          timestamp += tz
+        }
+      }
+    }
+    return timestamp
+  }  
+
   // Walk an element tree for properties
+  // But, there's special behaviour to skip pieces of the tree if they are
+  // themselves microformats.
   // el: Root element to start from
   // obj: the object to write properties to
   // standalone: is this a standalone microformat, or augmenting a property?
@@ -201,7 +297,7 @@ var exports = exports || window.hparse
         }
       }
       // don't crawl siblings of the initial root element
-      n = (depth) ? n.nextSibling : false
+      n = (depth) ? n.nextSibling : undefined
     }
 
     // index all objects
