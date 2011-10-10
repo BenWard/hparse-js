@@ -9,7 +9,6 @@
 
 var exports = exports || window.hparse
 
-
 !function(exports) {
 
   exports = exports || {}
@@ -140,21 +139,29 @@ var exports = exports || window.hparse
         }
         
         // Continue: Parse rel values as properties
-        relValues = relValues.split(" ")
-        for(var i=0; rel = relValues[i]; i++) {
+        if(settings.parseRelAttr) {
+          relValues = relValues.split(" ")
+          for(var i=0; rel = relValues[i]; i++) {
           
-          // TODO: IMPLEMENTATION: If class properties will override rel properties:
-          if(obj.properties[rel]) {
-            continue;
-          }
-          else {
-            values['rel'] = values['rel'] || propertyParsers['rel'].call(n)
-            assignValue(obj, rel, values['rel'])
+            // TODO: IMPLEMENTATION: If class properties will override rel properties:
+            if(obj.properties[rel]) {
+              continue;
+            }
+            else {
+              values['rel'] = values['rel'] || propertyParsers['rel'].call(n)
+              assignValue(obj, rel, values['rel'])
+            }
           }
         }
         
-        // TODO: IDEA: Parse pubdate as dt-published?
-        
+        // Parse pubdate as dt-published, if not already parsed
+        if(settings.parsePubDateAttr
+          && 'TIME' == n.nodeName
+          && n.getAttribute('pubdate')
+          && !obj.properties['published']) {
+
+          assignValue(obj, 'published', propertyParsers['dt'].call(n))
+        }
 
         // unless we parsed an opaque microformat as a property, continue parsing down the tree:
         if (!mfo && n.firstChild) {
@@ -164,7 +171,7 @@ var exports = exports || window.hparse
       // don't crawl siblings of the initial root element
       n = (depth) ? n.nextSibling : false
     }
-    
+
     // index all objects
     indexes.all.push(obj)
     
