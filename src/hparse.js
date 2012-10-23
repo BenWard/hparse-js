@@ -34,7 +34,8 @@ var exports = exports || window.hparse;
     // Should also accept dates on tantek.com: e.g. 2010-245.
   };
   var nodeTypes = { // Older versions of IE don't include the nodeType enum
-    ELEMENT_NODE: 1
+    ELEMENT_NODE: 1,
+    TEXT_NODE: 3
   };
   var indexes = {
     standalone: [],
@@ -42,6 +43,7 @@ var exports = exports || window.hparse;
     byID: {}
   };
   var settings = { // settings for the parser. TODO: Add mechanism to actually override these
+    parseSingletonRootNodes: true, // parse <a class=h-card ...><img src=#photo alt="Ben Ward"></a> as full hcard.
     parsePubDateAttr: true, // parse time/@pubdate as .dt-published
     parseRelAttr: true, // parse @rel attributes as properties
     parseItemRefAttr: true, // use microdata's itemref as per the include-pattern
@@ -50,6 +52,9 @@ var exports = exports || window.hparse;
     forceValidUrls: true, // validate and filter URL properties against a valid regex
     forceValidDates: true // validate and filter DT properties against a valid regex
   };
+  // Legacy microformat mapping vocabs:
+  var vocabularies = {};
+  var vocabularyRoots = {};
 
   // iterate on every node
   // find h-*
@@ -61,57 +66,57 @@ var exports = exports || window.hparse;
     // Put format into parent microformat, and into root index of all microformats.
 
   var propertyParsers = {
-      p: function(el) {
-        // Value Title
-        // if ABBR -> title
-        // if IMG -> alt
-        // textContent || innerText
-      },
-      u: function(el) {
-        var url;
-        if ('A' == el.nodeName && el.href) {
-          url = a.href;
-        }
-        else if('IMG' == el.nodeName) {
-          url = img.src;
-        }
-        else if('OBJECT' == el.nodeName && el.data) {
-          url = el.data;
-        }
-        else {
-          url = propertyParsers.p(el);
-        }
-
-        if(settings.validateUrlFormats && !regexen.URL.test(url)) {
-          return undefined;
-        }
-        else {
-          return url;
-        }
-      },
-      dt: function(el) {
-        var dt;
-        if('TIME' == el.nodeName) {
-          dt = el.getAttribute('datetime') || getTextContent(el);
-        }
-        else {
-          dt = parseDateTimeValuePattern(el) || propertyParsers.p(el);
-        }
-        // TODO: clean up ISO format? Is there anything that can be done for this?
-
-        if(settings.forceValidDates && !regexen.ISOFULL.test(dt)) {
-          return undefined;
-        }
-        else {
-          return dt;
-        }
-      },
-      e: function(el) {
-        return el.innerHTML;
-      },
-      rel: function(el) {
-        return el.href;
+    p: function (el) {
+      if ('ABBR' == el.nodeName && el.title) {
+        return el.title;
       }
+      return flattenText(el);
+    },
+    u: function (el) {
+      var url;
+      if ('A' == el.nodeName && el.href) {
+        url = a.href;
+      }
+      else if ('IMG' == el.nodeName) {
+        url = img.src;
+      }
+      else if ('OBJECT' == el.nodeName && el.data) {
+        url = el.data;
+      }
+      else {
+        url = propertyParsers.p(el);
+      }
+
+      if(settings.validateUrlFormats && !regexen.URL.test(url)) {
+        return undefined;
+      }
+      else {
+        return url;
+      }
+    },
+    dt: function (el) {
+      var dt;
+      if('TIME' == el.nodeName) {
+        dt = el.getAttribute('datetime') || getTextContent(el);
+      }
+      else {
+        dt = parseDateTimeValuePattern(el) || propertyParsers.p(el);
+      }
+      // TODO: clean up ISO format? Is there anything that can be done for this?
+
+      if(settings.forceValidDates && !regexen.ISOFULL.test(dt)) {
+        return undefined;
+      }
+      else {
+        return dt;
+      }
+    },
+    e: function (el) {
+      return el.innerHTML;
+    },
+    rel: function (el) {
+      return el.href;
+    }
   };
 
   // Util to combine regular expression fragments.
@@ -208,12 +213,13 @@ var exports = exports || window.hparse;
   // el: Root element to start from
   // obj: the object to write properties to
   // standalone: is this a standalone microformat, or augmenting a property?
-  function parseObjectTree(el, obj, standalone, depth) {
+  function parseObjectTree (el, obj, standalone, depth) {
 
     standalone = standalone || true;
     depth = depth || 0;
 
     var n = el;
+    var className;
     var matchedProperties;
     var relValues;
     var values;
@@ -227,10 +233,15 @@ var exports = exports || window.hparse;
     while (n) {
       if (n.nodeType == nodeTypes.ELEMENT_NODE) {
         matchedProperties = regexen.PROPERTY.test(n.className);
+        className = n.classname || "";
         relValues = n.rel || "";
         values = {}; // already parsed values (by type) (saves doing p- twice for two properties)
         subobject = undefined;
         mfo = false; // set true if we parse another microformat as a property
+
+        if (settings.parseV1Microformats) {
+          className = mapLegacyProperties(className, obj && obj.types);
+        }
 
         // If a new microformat, parse it as an opaque blob:
         if (regexen.OBJECT.test(n.className)) {
@@ -238,10 +249,16 @@ var exports = exports || window.hparse;
           subobject = parseObjectTree(n, createObject(types), !matchedProperties);
 
           // IF: No explicit properties declared, imply format 'name' from content.
-          if ({} == subobject.properties) {
+          if ({} == subobject.properties && settings.parseSingletonRootNodes) {
+            // Infer the name:
             assignValue(subobject, 'name', propertyParsers.p(n));
-            // TBI ... and 'url' from A href
-            // TBI ... and 'photo' from IMG src (as element itself or only child)
+            if (n.nodeType == 'A') {
+              assignValue(subobject, 'url', propertyParsers.u(n));
+            }
+            // Single image/obj child parses as 'photo'
+            if (n.children.length === 1 && ~['IMG', 'OBJECT'].indexOf(children[0].nodeName)) {
+              assignValue(subobject, 'photo', propertyParsers.u(n));
+            }
           }
         }
 
@@ -339,15 +356,71 @@ var exports = exports || window.hparse;
     object.properties[property].push(val);
   }
 
-  function parseDateTime() {
+  function parseDateTime () {
 
   }
 
-  function valueClassPattern() {
+  function valueClassPattern () {
 
   }
 
-  exports.parse = function(root) {
+  // Get flattened text value of a node, include IMG fallback.
+  function flattenText (el) {
+    var n = el && el.firstChild;
+    var str = "";
+    while (n) {
+      if (n.nodeType == nodeTypes.TEXT_NODE) {
+        str += n.nodeValue;
+      }
+      else if (n.nodeType == nodeTypes.ELEMENT_NODE) {
+        if ('IMG' == n.nodeName) {
+          str += " " + n.alt + " ";
+        }
+        else {
+          str += flattenText(n);
+        }
+      }
+      n = n.nextSibling;
+    }
+    return str.replace(/ +/, ' ');
+  }
+
+  // Take legacy classNames and append v2 equivalents for a given format.
+  function mapLegacyProperties (className, type) {
+    var key;
+    var classes = className.split(' ');
+    var mapping = (type && vocabularies[type]) || vocabularyRoots;
+
+    for (key in mapping) {
+      if (~classes.indexOf(key)) {
+        classes.push(mapping[key]);
+      }
+    }
+  }
+
+  // Create a mapping of legacy root format classnames to v2 names:
+  // Allows for mapping both 'hcard' and 'vcard' to 'h-card'
+  function regenerateVocabMap () {
+    var i;
+    var rootName;
+    vocabularyRoots = {};
+
+    for (var key in vocabularies) {
+      if (!vocabularies[key].root || !vocabularies[key].root.length) break;
+      for (i = 0; (rootName = vocabularies[key].root[i]); i++) {
+        vocabularyRoots[rootName] = key;
+      }
+    }
+    return vocabularyRoots;
+  }
+
+  exports.addLegacyVocabulary = function (mapTo, format) {
+    vocabularies[mapTo] = format;
+    regenerateVocabMap();
+  };
+
+
+  exports.parse = function (root) {
 
   };
 
