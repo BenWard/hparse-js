@@ -16,10 +16,10 @@ Struckthrough items are not implemented yet.
 * Parsing of image `alt` text
 * Date-Time Pattern
 * Separated Date-Time Pattern
-* <strike>HTML5 `data` element</strike>
-* <strike>Include Pattern</strike>
-* <strike>Value-Title Pattern</strike>
-* <strike>Markdown output for raw text fields.</strike>
+* <del>HTML5 `data` element</del>
+* <del>Include Pattern</del>
+* <del>Value-Title Pattern</del>
+* <del>Markdown output for raw text fields.</del>
 
 ## Requirements
 
