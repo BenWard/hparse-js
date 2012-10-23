@@ -16,10 +16,10 @@ Struckthrough items are not implemented yet.
 * Parsing of image `alt` text
 * Date-Time Pattern
 * Separated Date-Time Pattern
-* <s>HTML5 `data` element</s>
-* <s>Include Pattern</s>
-* <s>Value-Title Pattern</s>
-* <s>Markdown output for raw text fields.</s>
+* <strike>HTML5 `data` element</strike>
+* <strike>Include Pattern</strike>
+* <strike>Value-Title Pattern</strike>
+* <strike>Markdown output for raw text fields.</strike>
 
 ## Requirements
 
