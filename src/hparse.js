@@ -67,6 +67,7 @@ var exports = exports || window.hparse;
 
   var propertyParsers = {
     p: function (el) {
+      // TODO: Value-Title
       if ('ABBR' == el.nodeName && el.title) {
         return el.title;
       }
