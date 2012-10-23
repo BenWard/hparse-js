@@ -1,15 +1,14 @@
-/** h-parse */
-/* A microformats2 DOM parser, with the ability to use microformats-shiv as a
-   module to support existing microformats.
+/** h-parse
+A microformats-2 DOM parser
+Also supports mapping of µf1 vocabularies to µf2 parsing rules
 
-   MIT License
-
-   (c) Ben Ward, 2012
+MIT License
+(c) Ben Ward, 2012
 */
 
 var exports = exports || window.hparse;
 
-(function(exports) {
+(function (exports) {
 
   exports = exports || {};
 
@@ -120,7 +119,7 @@ var exports = exports || window.hparse;
   // <https://github.com/twitter/twitter-text-js/blob/master/twitter-text.js#L25>
   // Licensed under the Apache License, Version 2.0
   // TODO: Only actually using this once so far, with no need for flags, so possible
-  function regexSupplant(regex, flags) {
+  function regexSupplant (regex, flags) {
      flags = flags || "";
 
      if (typeof regex !== "string") {
@@ -146,12 +145,12 @@ var exports = exports || window.hparse;
      }), flags);
    }
 
-  function getTextContent(el) {
+  function getTextContent (el) {
     return el.textContent || el.innerText;
   }
 
   // Find all p-value children and return them
-  function parseValuePattern(el, depth) {
+  function parseValuePattern (el, depth) {
     var values = [];
     var n = el;
 
@@ -171,7 +170,7 @@ var exports = exports || window.hparse;
 
   // Collects value class pattern descendents, and concatinates them to make an
   // ISO date string.
-  function parseDateTimeValuePattern(el) {
+  function parseDateTimeValuePattern (el) {
     var values = parseValuePattern(el);
     var date;
     var time;
@@ -271,12 +270,12 @@ var exports = exports || window.hparse;
         }
 
         // Continue: Parse rel values as properties
-        if(settings.parseRelAttr) {
+        if (settings.parseRelAttr) {
           relValues = relValues.split(" ");
           for (i = 0; (rel = relValues[i]); i++) {
 
-            // TODO: IMPLEMENTATION: If class properties will override rel properties:
-            if(obj.properties[rel]) {
+            // TODO: IMPLEMENTATION: Will class properties override rel properties? Combine?
+            if (obj.properties[rel]) {
               continue;
             }
             else {
@@ -318,7 +317,7 @@ var exports = exports || window.hparse;
   }
 
 
-  function createObject(types) {
+  function createObject (types) {
     return {
       type: types,
       properties: {},
@@ -328,7 +327,7 @@ var exports = exports || window.hparse;
 
   // Add a new value to an object property. Handle multiple values for the same
   // property name (e.g. multiple URLs), and handle assigning literal values
-  function assignValue(object, property, literal, struct) {
+  function assignValue (object, property, literal, struct) {
     var val = { value: literal };
 
     if (struct) {
@@ -352,7 +351,7 @@ var exports = exports || window.hparse;
 
   };
 
-  exports.getObjectsByFormat = function(format, includeSubProperties) {
+  exports.getObjectsByFormat = function (format, includeSubProperties) {
 
   };
 
