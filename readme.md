@@ -1,6 +1,6 @@
 # hparse-js
 
-`hparse` is a [Microformats 2](http://microformats.org) DOM parser written in JavaScript.
+`hparse` is a [Microformats 2](http://microformats.org/wiki/microformats2) DOM parser written in JavaScript.
 
 It natively supports the new prefix-based parsing rules of µf2, and provides a mechanism to
 important old, known µf1 vocabularies and parse them according to the rules of µf2.
@@ -16,9 +16,10 @@ Struckthrough items are not implemented yet.
 * Parsing of image `alt` text
 * Date-Time Pattern
 * Separated Date-Time Pattern
-* <del>HTML5 `data` element</del>
+* HTML5 `data` element
+* Value-Title Pattern
 * <del>Include Pattern</del>
-* <del>Value-Title Pattern</del>
+* <del>Support for HTML tables</del>
 * <del>Markdown output for raw text fields.</del>
 
 ## Requirements

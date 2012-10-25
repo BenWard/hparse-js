@@ -17,6 +17,7 @@ var exports = exports || window.hparse;
     OBJECT: /\b(h\-[\w\-]+)\b/g,
     PROPERTY: /\b(p|u|dt|e)-([\w\-]+)\b/g,
     VALUE: /\bvalue\b/,
+    VALUETITLE: /\bvalue\-title\b/,
     LEGACY: /\b(vcard|vevent|vcalendar|hreview|hentry|hfeed|hrecipe)\b/g,
     URL: /\b(?:(?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\((?:[^\s()<>]+|(\(?:[^\s()<>]+\)))*\))+(?:\((?:[^\s()<>]+|(?:\(?:[^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/i,
     // URL regex by John Gruber: http://daringfireball.net/2010/07/improved_regex_for_matching_urls
@@ -67,9 +68,19 @@ var exports = exports || window.hparse;
 
   var propertyParsers = {
     p: function (el) {
-      // TODO: Value-Title
+      var extractedValue;
+      // TODO: Old Value-Title
+      if ('DATA' == el.nodeName && el.value) {
+        return el.value;
+      }
+      if ((extractedValue = parseValueTitlePattern(el))) {
+        return extractedValue;
+      }
       if ('ABBR' == el.nodeName && el.title) {
         return el.title;
+      }
+      if ((extractedValue = parseValueTitlePattern(el))) {
+        return extractedValue;
       }
       return flattenText(el);
     },
@@ -158,20 +169,30 @@ var exports = exports || window.hparse;
   // Find all p-value children and return them
   function parseValuePattern (el, depth) {
     var values = [];
-    var n = el;
+    var n = el.firstChild;
+    depth = depth || 0;
 
-    while(n) {
-      if(/\bp-value\b/.test(n.className)) {
+    while (n) {
+      if (n.nodeType !== nodeTypes.ELEMENT_NODE) continue;
+
+      // If class="value"
+      if (regexen.VALUE.test(n.className)) {
         values.push(propertyParsers.p(n));
       }
-      // If this itself isn't another object property, then continue down the
+      // If this itself isn't another property, then continue down the
       // tree for values
-      if(!regexen.PROPERTY.test(n.className)) {
-        values.concat(parseDateTimeValuePattern(n.firstChild, depth+1));
+      if (!regexen.PROPERTY.test(n.className)) {
+        values.concat(parseValuePattern(n, depth+1));
       }
-      n = (depth) ? n.nextSibling : undefined;
+      n = n.nextSibling;
     }
     return values;
+  }
+
+  // Parse first-child-value-title
+  function parseValueTitlePattern (el) {
+    var vt = el.children.length && el.children[0];
+    return vt && regexen.VALUETITLE.test(vt.className) && vt.title;
   }
 
   // Collects value class pattern descendents, and concatinates them to make an
@@ -229,91 +250,92 @@ var exports = exports || window.hparse;
     var types;
     var type;
     var property;
-    var i;
+    var relCounter;
 
     while (n) {
-      if (n.nodeType == nodeTypes.ELEMENT_NODE) {
-        matchedProperties = regexen.PROPERTY.test(n.className);
-        className = n.classname || "";
-        relValues = n.rel || "";
-        values = {}; // already parsed values (by type) (saves doing p- twice for two properties)
-        subobject = undefined;
-        mfo = false; // set true if we parse another microformat as a property
+      if (n.nodeType !== nodeTypes.ELEMENT_NODE) continue;
 
-        if (settings.parseV1Microformats) {
-          className = mapLegacyProperties(className, obj && obj.types);
-        }
+      matchedProperties = regexen.PROPERTY.test(n.className);
+      className = n.classname || "";
+      relValues = n.rel || "";
+      values = {}; // already parsed values (by type) (saves doing p- twice for two properties)
+      subobject = undefined;
+      mfo = false; // set true if we parse another microformat as a property
 
-        // If a new microformat, parse it as an opaque blob:
-        if (regexen.OBJECT.test(n.className)) {
-          types = n.className.match(regexen.OBJECT);
-          subobject = parseObjectTree(n, createObject(types), !matchedProperties);
+      if (settings.parseV1Microformats ) {
+        className = mapLegacyProperties(className, obj && obj.types);
+      }
 
-          // IF: No explicit properties declared, imply format 'name' from content.
-          if ({} == subobject.properties && settings.parseSingletonRootNodes) {
-            // Infer the name:
-            assignValue(subobject, 'name', propertyParsers.p(n));
-            if (n.nodeType == 'A') {
-              assignValue(subobject, 'url', propertyParsers.u(n));
-            }
-            // Single image/obj child parses as 'photo'
-            if (n.children.length === 1 && ~['IMG', 'OBJECT'].indexOf(children[0].nodeName)) {
-              assignValue(subobject, 'photo', propertyParsers.u(n));
-            }
+      // If a new microformat, parse it as an opaque blob:
+      if (regexen.OBJECT.test(n.className)) {
+        types = n.className.match(regexen.OBJECT);
+        subobject = parseObjectTree(n, createObject(types), !matchedProperties);
+
+        // IF: No explicit properties declared, imply format 'name' from content.
+        if ({} == subobject.properties && settings.parseSingletonRootNodes) {
+          // Infer the name:
+          assignValue(subobject, 'name', propertyParsers.p(n));
+          if (n.nodeType == 'A') {
+            assignValue(subobject, 'url', propertyParsers.u(n));
           }
-        }
-
-        // Continue: Property assignments
-        while (n.className && (match = regexen.PROPERTY.exec(n.className))) {
-
-          type = match[0];
-          property = match[1];
-
-          // If we haven't already extracted a value for this type:
-          if (!values[type]) {
-            // All properties themselves need to be arrays.
-            values[type] = propertyParsers[type] && propertyParsers[type].call(n);
+          // Single image/obj child parses as 'photo'
+          if (n.children.length === 1 &&
+              ~['IMG', 'OBJECT'].indexOf(children[0].nodeName)) {
+            assignValue(subobject, 'photo', propertyParsers.u(n));
           }
-
-          if (values[type]) {
-            if ('p' == type) {
-              // For any p- objects, extract text value (from p handler) AND append the mfo
-              mfo = mfo || !!subobject;
-              assignValue(obj, property, values[type], subobject);
-            }
-            else {
-              assignValue(obj, property, values[type]);
-            }
-          }
-        }
-
-        // Continue: Parse rel values as properties
-        if (settings.parseRelAttr) {
-          relValues = relValues.split(" ");
-          for (i = 0; (rel = relValues[i]); i++) {
-
-            // TODO: IMPLEMENTATION: Will class properties override rel properties? Combine?
-            if (obj.properties[rel]) {
-              continue;
-            }
-            else {
-              values['rel'] = values['rel'] || propertyParsers['rel'].call(n);
-              assignValue(obj, rel, values['rel']);
-            }
-          }
-        }
-
-        // Parse pubdate as dt-published, if not already parsed
-        if (settings.parsePubDateAttr && 'TIME' == n.nodeName &&
-            n.getAttribute('pubdate') && !obj.properties['published']) {
-          assignValue(obj, 'published', propertyParsers['dt'].call(n));
-        }
-
-        // unless we parsed an opaque microformat as a property, continue parsing down the tree:
-        if (!mfo && n.firstChild) {
-          parseObjectTree(n.firstChild, obj, standalone, depth + 1);
         }
       }
+
+      // Continue: Property assignments
+      while (n.className && (match = regexen.PROPERTY.exec(n.className))) {
+        type = match[0];
+        property = match[1];
+
+        // If we haven't already extracted a value for this type:
+        if (!values[type]) {
+          // All properties themselves need to be arrays.
+          values[type] = propertyParsers[type] && propertyParsers[type].call(n);
+        }
+
+        if (values[type]) {
+          if ('p' == type) {
+            // For any p- objects, extract text value (from p handler) AND append the mfo
+            mfo = mfo || !!subobject;
+            assignValue(obj, property, values[type], subobject);
+          }
+          else {
+            assignValue(obj, property, values[type]);
+          }
+        }
+      }
+
+      // Continue: Parse rel values as properties
+      if (settings.parseRelAttr) {
+        relValues = relValues.split(" ");
+        for (relCounter = 0; (rel = relValues[relCounter]); relCounter++) {
+
+          // TODO: IMPLEMENTATION: Will class properties override rel properties? Combine?
+          if (obj.properties[rel]) {
+            continue;
+          }
+          else {
+            values['rel'] = values['rel'] || propertyParsers['rel'].call(n);
+            assignValue(obj, rel, values['rel']);
+          }
+        }
+      }
+
+      // Parse pubdate as dt-published, if not already parsed
+      if (settings.parsePubDateAttr && 'TIME' == n.nodeName &&
+          n.getAttribute('pubdate') && !obj.properties['published']) {
+        assignValue(obj, 'published', propertyParsers['dt'].call(n));
+      }
+
+      // unless we parsed an opaque microformat as a property, continue parsing down the tree:
+      if (!mfo && n.firstChild) {
+        parseObjectTree(n.firstChild, obj, standalone, depth + 1);
+      }
+
       // don't crawl siblings of the initial root element
       n = (depth) ? n.nextSibling : undefined;
     }
@@ -355,14 +377,6 @@ var exports = exports || window.hparse;
 
     object.properties[property] = object.properties[property] || [];
     object.properties[property].push(val);
-  }
-
-  function parseDateTime () {
-
-  }
-
-  function valueClassPattern () {
-
   }
 
   // Get flattened text value of a node, include IMG fallback.
