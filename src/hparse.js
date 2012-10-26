@@ -6,7 +6,7 @@ MIT License
 (c) Ben Ward, 2012
 */
 
-var exports = exports || window.hparse;
+var global = window || (module && module.exports);
 
 (function (exports) {
 
@@ -16,24 +16,29 @@ var exports = exports || window.hparse;
   var regexen = {
     OBJECT: /\b(h\-[\w\-]+)\b/g,
     PROPERTY: /\b(p|u|dt|e)-([\w\-]+)\b/g,
-    VALUE: /\bvalue\b/,
-    VALUETITLE: /\bvalue\-title\b/,
-    LEGACY: /\b(vcard|vevent|vcalendar|hreview|hentry|hfeed|hrecipe)\b/g,
+    VALUE: /\bvalue\b/g,
+    VALUETITLE: /\bvalue\-title\b/g,
     URL: /\b(?:(?:[a-z][\w-]+:(?:\/{1,3}|[a-z0-9%])|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}\/)(?:[^\s()<>]+|\((?:[^\s()<>]+|(\(?:[^\s()<>]+\)))*\))+(?:\((?:[^\s()<>]+|(?:\(?:[^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))/i,
-    // URL regex by John Gruber: http://daringfireball.net/2010/07/improved_regex_for_matching_urls
-    // via JavaScript port by Alan Moore on Stack Overflow: http://stackoverflow.com/questions/4928345/help-making-a-universal-regex-javascript-compatible/4929179#4929179
-    ISODATE: /\d{4}\-?((\d{2}\-?(\d{2})?|\d{3})?)?/,
-    //        YEAR     MONTH    DATE  OR DOY
-    ISOTIME: /\d{2}\:?(\d{2}\:?(\d{2}\:?(\d{2})?)?)?/,
-    //        HOUR     MIN      SEC      MS
-    ISOTZ: /([\+\-]\d{2}\:?\d{2}|Z)/,
-    //        TIMEZONE
-    ISOFULL: regexSupplant('#{ISODATE}(T#{ISOTIME}(#{ISOTZ})?)?')
-    // A regex that matches the pattern of an ISO 8610 date. Note that it
-    // does not attempt to validate it as a real date.
-    // Should accept anything from "2011" to "2011-10-10T01:34:00:00-0800"
-    // Should also accept dates on tantek.com: e.g. 2010-245.
+    // URL regex by John Gruber:
+    //   http://daringfireball.net/2010/07/improved_regex_for_matching_urls
+    // via JavaScript port by Alan Moore on Stack Overflow:
+    //   http://stackoverflow.com/a/4929179
   };
+  regexen.ISODATE = /\d{4}\-?((\d{2}\-?(\d{2})?|\d{3})?)?/g,
+  //                YEAR     MONTH    DATE OR DOY
+  regexen.ISOTIME = /\d{2}\:?(\d{2}\:?(\d{2}\:?(\d{2})?)?)?/g,
+  //                HOUR     MIN      SEC      MS
+  regexen.ISOTZ = /([\+\-]\d{2}\:?\d{2}|Z)/g,
+  //              TIMEZONE
+  regexen.ISOFULL = new RegExp([
+    regexen.ISODATE.source, '(T',
+    regexen.ISOTIME.source, '(',
+    regexen.ISOTZ.source, ')?)?'].join(''));
+  // A regex that matches the pattern of an ISO 8610 date. Note that it
+  // does not attempt to validate it as a real date.
+  // Should accept anything from "2011" to "2011-10-10T01:34:00:00-0800"
+  // Should also accept dates on tantek.com: e.g. 2010-245.
+
   var nodeTypes = { // Older versions of IE don't include the nodeType enum
     ELEMENT_NODE: 1,
     TEXT_NODE: 3
@@ -87,10 +92,10 @@ var exports = exports || window.hparse;
     u: function (el) {
       var url;
       if ('A' == el.nodeName && el.href) {
-        url = a.href;
+        url = el.href;
       }
       else if ('IMG' == el.nodeName) {
-        url = img.src;
+        url = el.src;
       }
       else if ('OBJECT' == el.nodeName && el.data) {
         url = el.data;
@@ -116,7 +121,7 @@ var exports = exports || window.hparse;
       }
       // TODO: clean up ISO format? Is there anything that can be done for this?
 
-      if(settings.forceValidDates && !regexen.ISOFULL.test(dt)) {
+      if (settings.forceValidDates && !regexen.ISOFULL.test(dt)) {
         return undefined;
       }
       else {
@@ -130,37 +135,6 @@ var exports = exports || window.hparse;
       return el.href;
     }
   };
-
-  // Util to combine regular expression fragments.
-  // Yanked from twitter-text.js:
-  // <https://github.com/twitter/twitter-text-js/blob/master/twitter-text.js#L25>
-  // Licensed under the Apache License, Version 2.0
-  // TODO: Only actually using this once so far, with no need for flags, so possible
-  function regexSupplant (regex, flags) {
-     flags = flags || "";
-
-     if (typeof regex !== "string") {
-       if (regex.global && flags.indexOf("g") < 0) {
-         flags += "g";
-       }
-       if (regex.ignoreCase && flags.indexOf("i") < 0) {
-         flags += "i";
-       }
-       if (regex.multiline && flags.indexOf("m") < 0) {
-         flags += "m";
-       }
-
-       regex = regex.source;
-     }
-
-     return new RegExp(regex.replace(/#\{(\w+)\}/g, function(match, name) {
-       var newRegex = regexen[name] || "";
-       if (typeof newRegex !== "string") {
-         newRegex = newRegex.source;
-       }
-       return newRegex;
-     }), flags);
-   }
 
   function getTextContent (el) {
     return el.textContent || el.innerText;
@@ -253,10 +227,13 @@ var exports = exports || window.hparse;
     var relCounter;
 
     while (n) {
-      if (n.nodeType !== nodeTypes.ELEMENT_NODE) continue;
 
-      matchedProperties = regexen.PROPERTY.test(n.className);
-      className = n.classname || "";
+      if (n.nodeType !== nodeTypes.ELEMENT_NODE) {
+        n = n.nextSibling;
+        continue;
+      }
+
+      className = n.className || "";
       relValues = n.rel || "";
       values = {}; // already parsed values (by type) (saves doing p- twice for two properties)
       subobject = undefined;
@@ -266,10 +243,11 @@ var exports = exports || window.hparse;
         className = mapLegacyProperties(className, obj && obj.types);
       }
 
+      matchedProperties = regexen.PROPERTY.test(className);
+
       // If a new microformat, parse it as an opaque blob:
-      if (regexen.OBJECT.test(n.className)) {
-        types = n.className.match(regexen.OBJECT);
-        subobject = parseObjectTree(n, createObject(types), !matchedProperties);
+      if ((types = className.match(regexen.OBJECT))) {
+        subobject = parseObjectTree(n.firstChild, createObject(types), !matchedProperties, depth + 1);
 
         // IF: No explicit properties declared, imply format 'name' from content.
         if ({} == subobject.properties && settings.parseSingletonRootNodes) {
@@ -287,14 +265,15 @@ var exports = exports || window.hparse;
       }
 
       // Continue: Property assignments
-      while (n.className && (match = regexen.PROPERTY.exec(n.className))) {
-        type = match[0];
-        property = match[1];
+      regexen.PROPERTY.lastIndex = 0; // reset regex mach position
+      while (className && (match = regexen.PROPERTY.exec(className))) {
+        type = match[1];
+        property = match[2];
 
         // If we haven't already extracted a value for this type:
         if (!values[type]) {
           // All properties themselves need to be arrays.
-          values[type] = propertyParsers[type] && propertyParsers[type].call(n);
+          values[type] = propertyParsers[type] && propertyParsers[type].call(this, n);
         }
 
         if (values[type]) {
@@ -319,7 +298,7 @@ var exports = exports || window.hparse;
             continue;
           }
           else {
-            values['rel'] = values['rel'] || propertyParsers['rel'].call(n);
+            values['rel'] = values['rel'] || propertyParsers['rel'].call(this, n);
             assignValue(obj, rel, values['rel']);
           }
         }
@@ -328,10 +307,12 @@ var exports = exports || window.hparse;
       // Parse pubdate as dt-published, if not already parsed
       if (settings.parsePubDateAttr && 'TIME' == n.nodeName &&
           n.getAttribute('pubdate') && !obj.properties['published']) {
-        assignValue(obj, 'published', propertyParsers['dt'].call(n));
+        assignValue(obj, 'published', propertyParsers['dt'].call(this, n));
       }
 
       // unless we parsed an opaque microformat as a property, continue parsing down the tree:
+      // TODO: This is wrong. We're parsing properties of µf's we already parsed above.
+      //       Probably need reorder/better logic.
       if (!mfo && n.firstChild) {
         parseObjectTree(n.firstChild, obj, standalone, depth + 1);
       }
@@ -360,23 +341,19 @@ var exports = exports || window.hparse;
   function createObject (types) {
     return {
       type: types,
-      properties: {},
-      value: undefined
+      properties: {}
     };
   }
 
   // Add a new value to an object property. Handle multiple values for the same
   // property name (e.g. multiple URLs), and handle assigning literal values
-  function assignValue (object, property, literal, struct) {
-    var val = { value: literal };
-
+  function assignValue (o, property, literal, struct) {
     if (struct) {
-      val.type = struct.type;
-      val.properties = struct.properties;
+      struct.value = literal;
     }
 
-    object.properties[property] = object.properties[property] || [];
-    object.properties[property].push(val);
+    o.properties[property] = o.properties[property] || [];
+    o.properties[property].push(struct || literal);
   }
 
   // Get flattened text value of a node, include IMG fallback.
@@ -436,11 +413,14 @@ var exports = exports || window.hparse;
 
 
   exports.parse = function (root) {
-
+    // TODO: Wrap into a ParsedMicroformats object
+    // TODO: Pass in the indexes scope
+    parseObjectTree(root);
+    return indexes;
   };
 
   exports.getObjectsByFormat = function (format, includeSubProperties) {
 
   };
 
-})(exports || window.hparse);
+})(global.hparse = {});
