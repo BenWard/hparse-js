@@ -74,7 +74,6 @@ var global = window || (module && module.exports);
   var propertyParsers = {
     p: function (el) {
       var extractedValue;
-      // TODO: Old Value-Title
       if ('DATA' == el.nodeName && el.value) {
         return el.value;
       }
@@ -211,7 +210,7 @@ var global = window || (module && module.exports);
   // standalone: is this a standalone microformat, or augmenting a property?
   function parseObjectTree (el, obj, standalone, depth) {
 
-    standalone = standalone || true;
+    standalone = standalone !== false;
     depth = depth || 0;
 
     var n = el;
@@ -220,7 +219,6 @@ var global = window || (module && module.exports);
     var relValues;
     var values;
     var subobject;
-    var mfo;
     var types;
     var type;
     var property;
@@ -237,7 +235,6 @@ var global = window || (module && module.exports);
       relValues = n.rel || "";
       values = {}; // already parsed values (by type) (saves doing p- twice for two properties)
       subobject = undefined;
-      mfo = false; // set true if we parse another microformat as a property
 
       if (settings.parseV1Microformats ) {
         className = mapLegacyProperties(className, obj && obj.types);
@@ -279,7 +276,6 @@ var global = window || (module && module.exports);
         if (values[type]) {
           if ('p' == type) {
             // For any p- objects, extract text value (from p handler) AND append the mfo
-            mfo = mfo || !!subobject;
             assignValue(obj, property, values[type], subobject);
           }
           else {
@@ -313,12 +309,13 @@ var global = window || (module && module.exports);
       // unless we parsed an opaque microformat as a property, continue parsing down the tree:
       // TODO: This is wrong. We're parsing properties of µf's we already parsed above.
       //       Probably need reorder/better logic.
-      if (!mfo && n.firstChild) {
+      // TODO FIX: Just look to see if there's a subobject to avoid double-parsing.
+      if (!subobject && n.firstChild) {
         parseObjectTree(n.firstChild, obj, standalone, depth + 1);
       }
 
       // don't crawl siblings of the initial root element
-      n = (depth) ? n.nextSibling : undefined;
+      n = depth && n.nextSibling;
     }
 
     // index all objects
@@ -336,7 +333,6 @@ var global = window || (module && module.exports);
 
     return obj;
   }
-
 
   function createObject (types) {
     return {
@@ -356,7 +352,7 @@ var global = window || (module && module.exports);
     o.properties[property].push(struct || literal);
   }
 
-  // Get flattened text value of a node, include IMG fallback.
+  // Get flattened text value of a node, include ALT-text fallbacks.
   function flattenText (el) {
     var n = el && el.firstChild;
     var str = "";
@@ -392,12 +388,17 @@ var global = window || (module && module.exports);
 
   // Create a mapping of legacy root format classnames to v2 names:
   // Allows for mapping both 'hcard' and 'vcard' to 'h-card'
+
+
+  // TODO: Change this. Needs to build regexen. One from all known formats.
+  // One-each for every known property. Then just map it with a generic func.
   function regenerateVocabMap () {
     var i;
+    var key;
     var rootName;
     vocabularyRoots = {};
 
-    for (var key in vocabularies) {
+    for (key in vocabularies) {
       if (!vocabularies[key].root || !vocabularies[key].root.length) break;
       for (i = 0; (rootName = vocabularies[key].root[i]); i++) {
         vocabularyRoots[rootName] = key;
