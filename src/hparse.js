@@ -407,21 +407,42 @@ var global = window || (module && module.exports);
     return vocabularyRoots;
   }
 
-  exports.addLegacyVocabulary = function (mapTo, format) {
+  function Parser (rootElement) {
+
+  }
+
+  Parser.prototype.parse = function () {
+    var results;
+    return new Results();
+  };
+
+  Parser.defineLegacyVocabulary = function (mapTo, format) {
     vocabularies[mapTo] = format;
     regenerateVocabMap();
   };
 
+  function Results (all, standalone, byId) {
 
-  exports.parse = function (root) {
-    // TODO: Wrap into a ParsedMicroformats object
-    // TODO: Pass in the indexes scope
-    parseObjectTree(root);
-    return indexes;
-  };
+    this.getAllObjects = function () {
+      return all;
+    };
 
-  exports.getObjectsByFormat = function (format, includeSubProperties) {
+    this.getStandaloneObjects = function () {
+      return standalone;
+    };
 
+    this.getObjectsByMicroformat = function (format, includeSubProperties) {
+      return (includeSubProperties ? all : standalone).filter(function (i) {
+        return i && i.type && ~i.type.indexOf(format);
+      });
+    };
+  }
+
+  exports = {
+    MicroformatsParser: Parser,
+    parse: function (root) {
+      return new Parser(root).parse().getStandaloneObjects();
+    }
   };
 
 })(global.hparse = {});
