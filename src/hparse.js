@@ -39,15 +39,6 @@ var global = window || (module && module.exports);
   // Should accept anything from "2011" to "2011-10-10T01:34:00:00-0800"
   // Should also accept dates on tantek.com: e.g. 2010-245.
 
-  var nodeTypes = { // Older versions of IE don't include the nodeType enum
-    ELEMENT_NODE: 1,
-    TEXT_NODE: 3
-  };
-  var indexes = {
-    standalone: [],
-    all: [],
-    byID: {}
-  };
   var settings = { // settings for the parser. TODO: Add mechanism to actually override these
     parseSingletonRootNodes: true, // parse <a class=h-card ...><img src=#photo alt="Ben Ward"></a> as full hcard.
     parsePubDateAttr: true, // parse time/@pubdate as .dt-published
@@ -77,16 +68,16 @@ var global = window || (module && module.exports);
       if ('DATA' == el.nodeName && el.value) {
         return el.value;
       }
-      if ((extractedValue = parseValueTitlePattern(el))) {
+      if ((extractedValue = Parser.parseValueTitlePattern(el))) {
         return extractedValue;
       }
       if ('ABBR' == el.nodeName && el.title) {
         return el.title;
       }
-      if ((extractedValue = parseValueTitlePattern(el))) {
+      if ((extractedValue = Parser.parseValueTitlePattern(el))) {
         return extractedValue;
       }
-      return flattenText(el);
+      return Parser.flattenText(el);
     },
     u: function (el) {
       var url;
@@ -116,7 +107,7 @@ var global = window || (module && module.exports);
         dt = el.getAttribute('datetime') || getTextContent(el);
       }
       else {
-        dt = parseDateTimeValuePattern(el) || propertyParsers.p(el);
+        dt = Parser.parseDateTimeValuePattern(el) || propertyParsers.p(el);
       }
       // TODO: clean up ISO format? Is there anything that can be done for this?
 
@@ -139,79 +130,15 @@ var global = window || (module && module.exports);
     return el.textContent || el.innerText;
   }
 
-  // Find all p-value children and return them
-  function parseValuePattern (el, depth) {
-    var values = [];
-    var n = el.firstChild;
-    depth = depth || 0;
-
-    while (n) {
-      if (n.nodeType !== nodeTypes.ELEMENT_NODE) continue;
-
-      // If class="value"
-      if (regexen.VALUE.test(n.className)) {
-        values.push(propertyParsers.p(n));
-      }
-      // If this itself isn't another property, then continue down the
-      // tree for values
-      if (!regexen.PROPERTY.test(n.className)) {
-        values.concat(parseValuePattern(n, depth+1));
-      }
-      n = n.nextSibling;
-    }
-    return values;
-  }
-
-  // Parse first-child-value-title
-  function parseValueTitlePattern (el) {
-    var vt = el.children.length && el.children[0];
-    return vt && regexen.VALUETITLE.test(vt.className) && vt.title;
-  }
-
-  // Collects value class pattern descendents, and concatinates them to make an
-  // ISO date string.
-  function parseDateTimeValuePattern (el) {
-    var values = parseValuePattern(el);
-    var date;
-    var time;
-    var tz;
-    var timestamp;
-    var v;
-
-    for (v in values) {
-      if (regexen.ISODATE.test(v)) {
-        date = date || v;
-      }
-      else if (regexen.ISOTIME.test(v)) {
-        time = time || v;
-      }
-      else if (regexen.ISOTZ.test(v)) {
-        tz = tz || v;
-      }
-    }
-
-    if (date) {
-      timestamp = date;
-      if (time) {
-        timestamp += "T" + time;
-        if (tz) {
-          timestamp += tz;
-        }
-      }
-    }
-    return timestamp;
-  }
-
   // Walk an element tree for properties
   // But, there's special behaviour to skip pieces of the tree if they are
   // themselves microformats.
   // el: Root element to start from
+  // indexes:
   // obj: the object to write properties to
   // standalone: is this a standalone microformat, or augmenting a property?
-  function parseObjectTree (el, obj, standalone, depth) {
-
-    standalone = standalone !== false;
-    depth = depth || 0;
+  // depth: are we at the root of a format?
+  function parseObjectTree (el, results, obj, standalone, depth) {
 
     var n = el;
     var className;
@@ -224,9 +151,13 @@ var global = window || (module && module.exports);
     var property;
     var relCounter;
 
+    results = results || { standalone: [], all: [], byId: {} };
+    standalone = standalone !== false;
+    depth = depth || 0;
+
     while (n) {
 
-      if (n.nodeType !== nodeTypes.ELEMENT_NODE) {
+      if (n.nodeType !== Node.ELEMENT_NODE) {
         n = n.nextSibling;
         continue;
       }
@@ -244,7 +175,7 @@ var global = window || (module && module.exports);
 
       // If a new microformat, parse it as an opaque blob:
       if ((types = className.match(regexen.OBJECT))) {
-        subobject = parseObjectTree(n.firstChild, createObject(types), !matchedProperties, depth + 1);
+        subobject = parseObjectTree(n.firstChild, results, createObject(types), !matchedProperties, depth + 1);
 
         // IF: No explicit properties declared, imply format 'name' from content.
         if ({} == subobject.properties && settings.parseSingletonRootNodes) {
@@ -258,6 +189,14 @@ var global = window || (module && module.exports);
               ~['IMG', 'OBJECT'].indexOf(children[0].nodeName)) {
             assignValue(subobject, 'photo', propertyParsers.u(n));
           }
+        }
+
+        // Index newly parsed object:
+        if (subobject) {
+          results.all.push(subobject);
+          if (standalone) results.standalone.push(subobject);
+          // index object by ID (used by itemref and include-pattern)
+          if (el.id) results.byID[el.id] = subobject;
         }
       }
 
@@ -311,27 +250,14 @@ var global = window || (module && module.exports);
       //       Probably need reorder/better logic.
       // TODO FIX: Just look to see if there's a subobject to avoid double-parsing.
       if (!subobject && n.firstChild) {
-        parseObjectTree(n.firstChild, obj, standalone, depth + 1);
+        parseObjectTree(n.firstChild, results, obj, standalone, depth + 1);
       }
 
       // don't crawl siblings of the initial root element
       n = depth && n.nextSibling;
     }
 
-    // index all objects
-    indexes.all.push(obj);
-
-    // index standalone objects
-    if (standalone) {
-      indexes.standalone.push(obj);
-    }
-
-    // index object by ID (used by itemref and include-pattern)
-    if (el.id) {
-      indexes.byID[el.id] = obj;
-    }
-
-    return obj;
+    return depth ? obj : results;
   }
 
   function createObject (types) {
@@ -352,27 +278,6 @@ var global = window || (module && module.exports);
     o.properties[property].push(struct || literal);
   }
 
-  // Get flattened text value of a node, include ALT-text fallbacks.
-  function flattenText (el) {
-    var n = el && el.firstChild;
-    var str = "";
-    while (n) {
-      if (n.nodeType == nodeTypes.TEXT_NODE) {
-        str += n.nodeValue;
-      }
-      else if (n.nodeType == nodeTypes.ELEMENT_NODE) {
-        if ('IMG' == n.nodeName) {
-          str += " " + n.alt + " ";
-        }
-        else {
-          str += flattenText(n);
-        }
-      }
-      n = n.nextSibling;
-    }
-    return str.replace(/ +/, ' ');
-  }
-
   // Take legacy classNames and append v2 equivalents for a given format.
   function mapLegacyProperties (className, type) {
     var key;
@@ -388,7 +293,6 @@ var global = window || (module && module.exports);
 
   // Create a mapping of legacy root format classnames to v2 names:
   // Allows for mapping both 'hcard' and 'vcard' to 'h-card'
-
 
   // TODO: Change this. Needs to build regexen. One from all known formats.
   // One-each for every known property. Then just map it with a generic func.
@@ -408,12 +312,11 @@ var global = window || (module && module.exports);
   }
 
   function Parser (rootElement) {
-
+    this.element = rootElement;
   }
 
   Parser.prototype.parse = function () {
-    var results;
-    return new Results();
+    return new Results(parseObjectTree(this.element));
   };
 
   Parser.defineLegacyVocabulary = function (mapTo, format) {
@@ -421,7 +324,98 @@ var global = window || (module && module.exports);
     regenerateVocabMap();
   };
 
-  function Results (all, standalone, byId) {
+  // Find all p-value children and return them
+  Parser.parseValuePattern = function (el, depth) {
+    var values = [];
+    var n = el.firstChild;
+    depth = depth || 0;
+
+    while (n) {
+      if (n.nodeType !== Node.ELEMENT_NODE) continue;
+
+      // If class="value"
+      if (regexen.VALUE.test(n.className)) {
+        values.push(propertyParsers.p(n));
+      }
+      // If this itself isn't another property, then continue down the
+      // tree for values
+      if (!regexen.PROPERTY.test(n.className)) {
+        values.concat(Parser.parseValuePattern(n, depth+1));
+      }
+      n = n.nextSibling;
+    }
+    return values;
+  };
+
+  // Parse first-child-value-title
+  Parser.parseValueTitlePattern = function (el) {
+    var vt = el.children.length && el.children[0];
+    return vt && regexen.VALUETITLE.test(vt.className) && vt.title;
+  };
+
+  // Collects value class pattern descendents, and concatinates them to make an
+  // ISO date string.
+  Parser.parseDateTimeValuePattern = function (el) {
+    var values = Parser.parseValuePattern(el);
+    var date;
+    var time;
+    var tz;
+    var timestamp;
+    var v;
+
+    for (v in values) {
+      if (regexen.ISODATE.test(v)) {
+        date = date || v;
+      }
+      else if (regexen.ISOTIME.test(v)) {
+        time = time || v;
+      }
+      else if (regexen.ISOTZ.test(v)) {
+        tz = tz || v;
+      }
+    }
+
+    if (date) {
+      timestamp = date;
+      if (time) {
+        timestamp += "T" + time;
+        if (tz) {
+          timestamp += tz;
+        }
+      }
+    }
+    return timestamp;
+  };
+
+  // Get flattened text value of a node, include ALT-text fallbacks.
+  Parser.flattenText = function (el) {
+    var n = el && el.firstChild;
+    var str = "";
+    while (n) {
+      if (n.nodeType == Node.TEXT_NODE) {
+        str += n.nodeValue;
+      }
+      else if (n.nodeType == Node.ELEMENT_NODE) {
+        if ('IMG' == n.nodeName) {
+          str += " " + n.alt + " ";
+        }
+        else {
+          str += Parser.flattenText(n);
+        }
+      }
+      n = n.nextSibling;
+    }
+    return str.replace(/ +/, ' ');
+  };
+
+  Parser.parse = function (root) {
+    return new Parser(root).parse().getAllObjects();
+  };
+
+  function Results (indexedResults) {
+    var all = indexedResults.all;
+    var standalone = indexedResults.standalone;
+    var ids = indexedResults.ids;
 
     this.getAllObjects = function () {
       return all;
@@ -431,6 +425,10 @@ var global = window || (module && module.exports);
       return standalone;
     };
 
+    this.getObjectById = function (id) {
+      return ids[id];
+    };
+
     this.getObjectsByMicroformat = function (format, includeSubProperties) {
       return (includeSubProperties ? all : standalone).filter(function (i) {
         return i && i.type && ~i.type.indexOf(format);
@@ -438,11 +436,6 @@ var global = window || (module && module.exports);
     };
   }
 
-  exports = {
-    MicroformatsParser: Parser,
-    parse: function (root) {
-      return new Parser(root).parse().getStandaloneObjects();
-    }
-  };
+  exports.HParse = Parser;
 
-})(global.hparse = {});
+})(global);
