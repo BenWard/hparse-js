@@ -136,9 +136,8 @@ var global = window || (module && module.exports);
   // el: Root element to start from
   // indexes:
   // obj: the object to write properties to
-  // standalone: is this a standalone microformat, or augmenting a property?
   // depth: are we at the root of a format?
-  function parseObjectTree (el, results, obj, standalone, depth) {
+  function parseObjectTree (el, results, obj, depth) {
 
     var n = el;
     var className;
@@ -152,7 +151,6 @@ var global = window || (module && module.exports);
     var relCounter;
 
     results = results || { standalone: [], all: [], byId: {} };
-    standalone = standalone !== false;
     depth = depth || 0;
 
     while (n) {
@@ -175,27 +173,32 @@ var global = window || (module && module.exports);
 
       // If a new microformat, parse it as an opaque blob:
       if ((types = className.match(regexen.OBJECT))) {
-        subobject = parseObjectTree(n.firstChild, results, createObject(types), !matchedProperties, depth + 1);
+        subobject = parseObjectTree(n.firstChild, results, createObject(types), depth + 1);
 
         // IF: No explicit properties declared, imply format 'name' from content.
-        if ({} == subobject.properties && settings.parseSingletonRootNodes) {
+        if (!Object.keys(subobject.properties).length && settings.parseSingletonRootNodes) {
           // Infer the name:
           assignValue(subobject, 'name', propertyParsers.p(n));
-          if (n.nodeType == 'A') {
+          // URL
+          if (n.nodeName == 'A') {
             assignValue(subobject, 'url', propertyParsers.u(n));
           }
           // Single image/obj child parses as 'photo'
           if (n.children.length === 1 &&
-              ~['IMG', 'OBJECT'].indexOf(children[0].nodeName)) {
-            assignValue(subobject, 'photo', propertyParsers.u(n));
+              ~['IMG', 'OBJECT'].indexOf(n.children[0].nodeName)) {
+            assignValue(subobject, 'photo', propertyParsers.u(n.children[0]));
           }
         }
 
         // Index newly parsed object:
         if (subobject) {
           results.all.push(subobject);
-          if (standalone) results.standalone.push(subobject);
-          // index object by ID (used by itemref and include-pattern)
+
+          // If this didn't match any properties, and doesn't have a container
+          // microformat, add it to the standalone microformats index:
+          if (!obj || !matchedProperties) results.standalone.push(subobject);
+
+          // Also index objects by ID (used by itemref and include-pattern)
           if (el.id) results.byID[el.id] = subobject;
         }
       }
@@ -250,7 +253,7 @@ var global = window || (module && module.exports);
       //       Probably need reorder/better logic.
       // TODO FIX: Just look to see if there's a subobject to avoid double-parsing.
       if (!subobject && n.firstChild) {
-        parseObjectTree(n.firstChild, results, obj, standalone, depth + 1);
+        parseObjectTree(n.firstChild, results, obj, depth + 1);
       }
 
       // don't crawl siblings of the initial root element
@@ -405,7 +408,7 @@ var global = window || (module && module.exports);
       }
       n = n.nextSibling;
     }
-    return str.replace(/ +/, ' ');
+    return str.replace(/ +/, ' ').trim();
   };
 
   Parser.parse = function (root) {
