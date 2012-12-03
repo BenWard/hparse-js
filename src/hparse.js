@@ -30,25 +30,33 @@ var global = window || (module && module.exports);
   //                HOUR     MIN      SEC      MS
   regexen.ISOTZ = /([\+\-]\d{2}\:?\d{2}|Z)/g,
   //              TIMEZONE
-  regexen.ISOFULL = new RegExp([
+  regexen.ISOFULL = new RegExp(['^',
     regexen.ISODATE.source, '(T',
     regexen.ISOTIME.source, '(',
-    regexen.ISOTZ.source, ')?)?'].join(''));
+    regexen.ISOTZ.source, ')?)?$'].join(''));
   // A regex that matches the pattern of an ISO 8610 date. Note that it
   // does not attempt to validate it as a real date.
   // Should accept anything from "2011" to "2011-10-10T01:34:00:00-0800"
   // Should also accept dates on tantek.com: e.g. 2010-245.
 
-  var settings = { // settings for the parser. TODO: Add mechanism to actually override these
+  var settings = {
+    // Options affecting the parser:
     parseSingletonRootNodes: true, // parse <a class=h-card ...><img src=#photo alt="Ben Ward"></a> as full hcard.
     parsePubDateAttr: true, // parse time/@pubdate as .dt-published
-    parseRelAttr: true, // parse @rel attributes as properties
+    parseRelAttr: true, // parse @rel attributes
     parseItemRefAttr: true, // use microdata's itemref as per the include-pattern
+    // Options for legacy microformats
     parseV1Microformats: false, // parse v1 microformats as microformats-2 (TODO: requires extension with vocabulary mappings)
-    parseWeakDates: false, // attempt to parse any date format. Probably a bad thing to include, but documenting idea for now
+    // Options for data format enforcement:
     forceValidUrls: true, // validate and filter URL properties against a valid regex
-    forceValidDates: true // validate and filter DT properties against a valid regex
+    forceValidDates: true, // validate and filter DT properties against a valid regex
+    // Options for plain text formatting:
+    expandPlainTextUrls: true, // when converting an link to plain text, append the URL in parantheses.
+    markdownPlainTextUrls: false, // modifier on the previous; use Markdown link syntax.
+    expandPlainTextAbbreviations: true, // when converting an abbr to plain text, append the URL in parantheses.
+    markdownPlainTextPhrases: true // when converting B, I, STRONG, EM to plaintext, wrap in markdown.
   };
+
   // Legacy microformat mapping vocabs:
   var vocabularies = {};
   var vocabularyRoots = {};
@@ -411,8 +419,23 @@ var global = window || (module && module.exports);
     return str.replace(/ +/, ' ').trim();
   };
 
+  // Shorthand method to parse a provided tree
   Parser.parse = function (root) {
     return new Parser(root).parse().getAllObjects();
+  };
+
+  // Override global parser settings, return representation of current settings
+  Parser.settings = function (override) {
+    var clone = {};
+    var key;
+
+    for (key in settings) if (settings.hasOwnProperty(key)) {
+      if (override && undefined !== override[key]) {
+        settings[key] = !!override[key];
+      }
+      clone[key] = settings[key];
+    }
+    return clone;
   };
 
   function Results (indexedResults) {
