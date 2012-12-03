@@ -53,8 +53,9 @@ var global = window || (module && module.exports);
     // Options for plain text formatting:
     expandPlainTextUrls: true, // when converting an link to plain text, append the URL in parantheses.
     markdownPlainTextUrls: false, // modifier on the previous; use Markdown link syntax.
-    expandPlainTextAbbreviations: true, // when converting an abbr to plain text, append the URL in parantheses.
-    markdownPlainTextPhrases: true // when converting B, I, STRONG, EM to plaintext, wrap in markdown.
+    expandPlainTextAbbreviations: false, // when converting an abbr to plain text, append the URL in parantheses.
+    markdownPlainTextPhrases: true, // when converting B, I, STRONG, EM to plaintext, wrap in markdown.
+    markdownPlainTextImages: false // use Markdown syntax when inlining images
   };
 
   // Legacy microformat mapping vocabs:
