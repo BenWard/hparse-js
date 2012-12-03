@@ -178,7 +178,7 @@ var global = window || (module && module.exports);
     while (n) {
 
       if (n.nodeType !== Node.ELEMENT_NODE) {
-        n = n.nextSibling;
+        n = depth && n.nextSibling;
         continue;
       }
 
@@ -206,7 +206,10 @@ var global = window || (module && module.exports);
             assignValue(subobject, 'photo', propertyParsers.u(n.children[0]));
           }
         }
-        else subobject = undefined;
+
+        if (!Object.keys(subobject.properties).length) {
+          subobject = undefined;
+        }
       }
       else if (settings.parseV1Microformats && (types = className.match(legacyRootNodes))) {
         subobject = parseObjectTree(
@@ -238,34 +241,36 @@ var global = window || (module && module.exports);
         if (el.id) results.byID[el.id] = subobject;
       }
 
-      // Continue: Property assignments
-      if (legacyRegex) {
-        legacyRegex.lastIndex = 0;
-        while (className && (match = legacyRegex.exec(className))) {
-          match = legacyVocab[match].split('-', 2);
-          parseProperty(obj, match[0], match[1], values, subobject);
+      if (obj) {
+        // Continue: Property assignments
+        if (legacyRegex) {
+          legacyRegex.lastIndex = 0;
+          while (className && (match = legacyRegex.exec(className))) {
+            match = legacyVocab[match].split('-', 2);
+            parseProperty(obj, match[0], match[1], n, values, subobject);
+          }
         }
-      }
-      else {
-        regexen.PROPERTY.lastIndex = 0; // reset regex mach position
-        while (className && (match = regexen.PROPERTY.exec(className))) {
-          parseProperty(obj, match[1], match[2], values, subobject);
+        else {
+          regexen.PROPERTY.lastIndex = 0; // reset regex mach position
+          while (className && (match = regexen.PROPERTY.exec(className))) {
+            parseProperty(obj, match[1], match[2], n, values, subobject);
+          }
         }
-      }
 
-      // Parse pubdate as dt-published, if not already parsed
-      if (settings.parsePubDateAttr && 'TIME' == n.nodeName &&
-          n.getAttribute('pubdate') && !obj.properties['published']) {
-        assignValue(obj, 'published', propertyParsers['dt'].call(this, n));
-      }
+        // Parse pubdate as dt-published, if not already parsed
+        if (settings.parsePubDateAttr && 'TIME' == n.nodeName &&
+            n.getAttribute('pubdate') && !obj.properties['published']) {
+          assignValue(obj, 'published', propertyParsers['dt'].call(this, n));
+        }
 
-      // Continue: Parse rel values and collect globally:
-      if (settings.parseRelAttr) {
-        assignRelationships(
-          obj,
-          (n.rel || "").split(" "),
-          propertyParsers['rel'].call(this, n)
-        );
+        // Continue: Parse rel values and collect globally:
+        if (settings.parseRelAttr && n.rel) {
+          assignRelationships(
+            obj,
+            (n.rel || "").split(" "),
+            propertyParsers['rel'].call(this, n)
+          );
+        }
       }
 
       // unless we parsed an opaque microformat as a property, continue parsing down the tree:
@@ -283,28 +288,32 @@ var global = window || (module && module.exports);
   }
 
   function createObject (types) {
-    return {
+    var o = {
       type: types,
       properties: {}
     };
+    if (settings.parseRelAttr) {
+      o.relationships = {};
+    }
+    return o;
   }
 
   // Handle a parsed type/property pair, and assign it
-  function parseProperty (obj, type, property, knownValues, subobject) {
+  function parseProperty (obj, type, property, n, knownValues, subobject) {
 
     // If we haven't already extracted a value for this type:
-    if (!values[type]) {
+    if (!knownValues[type]) {
       // All properties themselves need to be arrays.
-      values[type] = propertyParsers[type] && propertyParsers[type].call(this, n);
+      knownValues[type] = propertyParsers[type] && propertyParsers[type].call(this, n);
     }
 
-    if (values[type]) {
+    if (knownValues[type]) {
       if ('p' == type) {
         // For any p- objects, extract text value (from p handler) AND append the mfo
-        assignValue(obj, property, values[type], subobject);
+        assignValue(obj, property, knownValues[type], subobject);
       }
       else {
-        assignValue(obj, property, values[type]);
+        assignValue(obj, property, knownValues[type]);
       }
     }
   }
@@ -321,6 +330,7 @@ var global = window || (module && module.exports);
 
   function assignRelationships (o, rels, value) {
     rels.forEach(function (rel) {
+      if (!rel) return;
       o.relationships[rel] = o.relationships[rel] || [];
       o.relationships[rel].push(value);
     });
