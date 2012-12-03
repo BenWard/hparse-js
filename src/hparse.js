@@ -108,7 +108,7 @@ MIT License
         return url;
       }
     },
-    dt: function (el) {
+    dt: function (el, bypassValidation) {
       var dt;
       if('TIME' == el.nodeName) {
         dt = el.getAttribute('datetime') || getTextContent(el);
@@ -117,7 +117,7 @@ MIT License
         dt = Parser.parseDateTimeValuePattern(el) || propertyParsers.p(el);
       }
       // TODO: clean up ISO format? Is there anything that can be done for this?
-      if (settings.forceValidDates && !matches(dt, regexen.ISOFULL)) {
+      if (!bypassValidation && settings.forceValidDates && !matches(dt, regexen.ISOFULL)) {
         return undefined;
       }
       else {
@@ -390,7 +390,7 @@ MIT License
       }
       // If class="value"
       if (matches(n.className, regexen.VALUE)) {
-        values.push(propertyParsers[parseAs](n));
+        values.push(propertyParsers[parseAs](n, true));
       }
       // If this itself isn't another property, then continue down the
       // tree for values
