@@ -258,10 +258,16 @@ var global = window || (module && module.exports);
         assignValue(obj, 'published', propertyParsers['dt'].call(this, n));
       }
 
+      // Continue: Parse rel values and collect globally:
+      if (settings.parseRelAttr) {
+        assignRelationships(
+          obj,
+          (n.rel || "").split(" "),
+          propertyParsers['rel'].call(this, n)
+        );
+      }
+
       // unless we parsed an opaque microformat as a property, continue parsing down the tree:
-      // TODO: This is wrong. We're parsing properties of µf's we already parsed above.
-      //       Probably need reorder/better logic.
-      // TODO FIX: Just look to see if there's a subobject to avoid double-parsing.
       if (!subobject && n.firstChild) {
         parseObjectTree(n.firstChild, results, obj, depth + 1);
       }
@@ -282,48 +288,41 @@ var global = window || (module && module.exports);
     };
   }
 
+  // Handle a parsed type/property pair, and assign it
+  function parseProperty (obj, type, property, knownValues, subobject) {
+
+    // If we haven't already extracted a value for this type:
+    if (!values[type]) {
+      // All properties themselves need to be arrays.
+      values[type] = propertyParsers[type] && propertyParsers[type].call(this, n);
+    }
+
+    if (values[type]) {
+      if ('p' == type) {
+        // For any p- objects, extract text value (from p handler) AND append the mfo
+        assignValue(obj, property, values[type], subobject);
+      }
+      else {
+        assignValue(obj, property, values[type]);
+      }
+    }
+  }
+
   // Add a new value to an object property. Handle multiple values for the same
   // property name (e.g. multiple URLs), and handle assigning literal values
   function assignValue (o, property, literal, struct) {
     if (struct) {
       struct.value = literal;
     }
-
     o.properties[property] = o.properties[property] || [];
     o.properties[property].push(struct || literal);
   }
 
-  // Take legacy classNames and append v2 equivalents for a given format.
-  function mapLegacyProperties (className, type) {
-    var key;
-    var classes = className.split(' ');
-    var mapping = (type && vocabularies[type]) || vocabularyRoots;
-
-    for (key in mapping) {
-      if (~classes.indexOf(key)) {
-        classes.push(mapping[key]);
-      }
-    }
-  }
-
-  // Create a mapping of legacy root format classnames to v2 names:
-  // Allows for mapping both 'hcard' and 'vcard' to 'h-card'
-
-  // TODO: Change this. Needs to build regexen. One from all known formats.
-  // One-each for every known property. Then just map it with a generic func.
-  function regenerateVocabMap () {
-    var i;
-    var key;
-    var rootName;
-    vocabularyRoots = {};
-
-    for (key in vocabularies) {
-      if (!vocabularies[key].root || !vocabularies[key].root.length) break;
-      for (i = 0; (rootName = vocabularies[key].root[i]); i++) {
-        vocabularyRoots[rootName] = key;
-      }
-    }
-    return vocabularyRoots;
+  function assignRelationships (o, rels, value) {
+    rels.forEach(function (rel) {
+      o.relationships[rel] = o.relationships[rel] || [];
+      o.relationships[rel].push(value);
+    });
   }
 
   function Parser (rootElement) {
