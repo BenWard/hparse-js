@@ -364,7 +364,8 @@ MIT License
     format.root.forEach(function (className) {
       vocabularies[className] = {
         properties: format.properties,
-        root: mapTo
+        root: mapTo,
+        afterParse: format.afterParse
       };
     });
 
