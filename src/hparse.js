@@ -410,25 +410,52 @@ var global = window || (module && module.exports);
     return timestamp;
   };
 
-  // Get flattened text value of a node, include ALT-text fallbacks.
+  // Get flattened text value of a node, ALT-text fallbacks.
   Parser.flattenText = function (el) {
     var n = el && el.firstChild;
-    var str = "";
+    var str = [];
     while (n) {
       if (n.nodeType == Node.TEXT_NODE) {
-        str += n.nodeValue;
+        str.push(n.nodeValue);
       }
       else if (n.nodeType == Node.ELEMENT_NODE) {
-        if ('IMG' == n.nodeName) {
-          str += " " + n.alt + " ";
+        if (settings.expandPlainTextUrls && 'A' == n.nodeName) {
+          if (settings.markdownPlainTextUrls) {
+            str.push('[' + Parser.flattenText(n) + '](' + n.href + ((n.title) ? ' "' + n.title + '"' : '') + ')');
+          }
+          else {
+            str.push(Parser.flattenText(n) + ' (' + n.href + ')');
+          }
+        }
+        else if (settings.expandPlainTextAbbreviations && ~['ABBR', 'ACRONYM]'].indexOf(n.nodeName) && n.title) {
+          str.push(Parser.flattenText(n) + ' (' + n.title + ')');
+        }
+        else if (settings.markdownPlainTextPhrases && ~['B', 'I', 'EM', 'STRONG', 'CODE'].indexOf(n.nodeName)) {
+          if ('CODE' == n.nodeName) {
+            str.push('`' + Parser.flattenText + '`');
+          }
+          else if (~['I', 'EM'].indexOf(n.nodeName)) {
+            str.push('*' + Parser.flattenText(n) + '*');
+          }
+          else {
+            str.push('*' + Parser.flattenText(n) + '*');
+          }
+        }
+        else if ('IMG' == n.nodeName) {
+          if (settings.markdownPlainTextImages) {
+            str.push('![' + n.alt + '](' + n.src + ((n.title) ? ' "' + n.title + '"' : '') + ')');
+          }
+          else {
+            str.push(" " + n.alt + " ");
+          }
         }
         else {
-          str += Parser.flattenText(n);
+          str.push(Parser.flattenText(n));
         }
       }
       n = n.nextSibling;
     }
-    return str.replace(/ +/, ' ').trim();
+    return str.join('').replace(/ +/, ' ').trim();
   };
 
   // Shorthand method to parse a provided tree
