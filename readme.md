@@ -80,13 +80,21 @@ There are some other publicly exposed parsing and text converstion methods that 
 
 Global setting names, functions, show here with default values. To change a setting, use `HParse.settings({ settingOne: true, settingTwo: false });`. Settings are all boolean.
 
+#### Parser Behvaiour Settings
+
 * `parseSingletonRootNodes`: `true`. Enable parsing of  `<a class=h-card ...><img src=#photo alt="Ben Ward"></a>` as a full microformat with `name`, `url` and `photo` properties.
 * `parsePubDateAttr`: `true`. Enable parsing of the HTML `<time>` element `pubdate` attribute as `.dt-published`.
 * `parseRelAttr`: `true`: Enable parsing of `rel` attributes to the `relationships` collection.
 * `parseItemRefAttr`: `true`. Enable use of microdata's `itemref` attribute as per the include-pattern. Not implemented yet.
 * `parseV1Microformats`: `false`. Enable parsing of legacy syntax microformats as per microformats-2. Requires adding individual vocabularies with `HParse.defineLegacyVocabulary`.
+
+#### Property Validation Settings
+
 * `forceValidUrls`: `true`. Filters `u-` URL property values for valid URLs only.
 * `forceValidDates`: `true`. Filtes `dt-` date time property values for valid ISO8610 dates only.
+
+#### Text Output Settings
+
 * `expandPlainTextUrls`: `true`. When converting an `<a>` element to plain text in property output, include the URL in parantheses.
 * `markdownPlainTextUrls`: `false`. When `expandPlainTextUrls` is `true`, output URLs in plaintext using [Markdown](http://daringfireball.net/projects/markdown/) syntax, `[Text](http://example.com "Title")`.
 * `expandPlainTextAbbreviations`: `false`. When converting an `<abbr>` to plain text, append the `title` expansion in parantheses.
