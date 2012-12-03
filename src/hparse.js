@@ -6,8 +6,6 @@ MIT License
 (c) Ben Ward, 2012
 */
 
-var global = window || (module && module.exports);
-
 (function (exports) {
 
   exports = exports || {};
@@ -223,10 +221,12 @@ var global = window || (module && module.exports);
             return legacyVocabularies[format].properties;
           }))
         );
-        // TODO: Will we need a post-processor callback for v1 formats into v2?
-        // types.forEach(function (format) {
-        //   legacyVocabularies[format].postProcess && legacyVocabularies[format].postProcess(subobject);
-        // }
+        // If the format defines a post-parse processor:
+        types.forEach(function (format) {
+          if (legacyVocabularies[format].afterParse) {
+            legacyVocabularies[format].afterParse(subobject);
+          }
+        });
       }
 
       // Index the newly parsed object:
@@ -514,4 +514,4 @@ var global = window || (module && module.exports);
 
   exports.HParse = Parser;
 
-})(global);
+})(window || global || (module && module.exports) || {});
