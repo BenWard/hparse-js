@@ -168,8 +168,8 @@ MIT License
     if (settings.parseV1Microformats && legacyVocab && !legacyRegex) {
       legacyRegex = new RegExp([
         '\\b(',
-        Object.keys(legacyVocab).join('|').replace('-', '\\-'),
-        ')\\b'].join('')
+        Object.keys(legacyVocab).join('|').replace(/\-/g, '\\-'),
+        ')\\b'].join(''), "g"
       );
     }
 
@@ -209,22 +209,25 @@ MIT License
           subobject = undefined;
         }
       }
-      else if (settings.parseV1Microformats && (types = className.match(legacyRootNodes))) {
+      else if (settings.parseV1Microformats && (types = className.match(vocabularyRoots))) {
         subobject = parseObjectTree(
           n.firstChild,
           results,
           createObject(types.map(function (format) {
-            return legacyVocabularies[format].root;
+            return vocabularies[format].root;
           })),
           depth + 1,
-          [].concat(types.map(function (format) {
-            return legacyVocabularies[format].properties;
-          }))
+          mergeObjects.apply(
+            this,
+            [{}].concat(types.map(function (format) {
+              return vocabularies[format].properties;
+            }
+          )))
         );
         // If the format defines a post-parse processor:
         types.forEach(function (format) {
-          if (legacyVocabularies[format].afterParse) {
-            legacyVocabularies[format].afterParse(subobject);
+          if (vocabularies[format].afterParse) {
+            vocabularies[format].afterParse(subobject);
           }
         });
       }
@@ -246,7 +249,7 @@ MIT License
         if (legacyRegex) {
           legacyRegex.lastIndex = 0;
           while (className && (match = legacyRegex.exec(className))) {
-            match = legacyVocab[match].split('-', 2);
+            match = legacyVocab[match[1]].split('-', 2);
             parseProperty(obj, match[0], match[1], n, values, subobject);
           }
         }
@@ -336,6 +339,19 @@ MIT License
     });
   }
 
+  function mergeObjects (target) {
+    var i = 1;
+    var o;
+    var key;
+
+    for (; (o = arguments[i]); i++) {
+      for (key in o) if (o.hasOwnProperty(key)) {
+        target[key] = o[key];
+      }
+    }
+    return target;
+  }
+
   function Parser (rootElement) {
     this.element = rootElement;
   }
@@ -345,15 +361,17 @@ MIT License
   };
 
   Parser.defineLegacyVocabulary = function (mapTo, format) {
-    format.roots.forEach(function (className) {
-      legacyVocabularies[className] = format.properties;
-      legacyVocabularies[className].root = mapTo;
+    format.root.forEach(function (className) {
+      vocabularies[className] = {
+        properties: format.properties,
+        root: mapTo
+      };
     });
 
     // Rebuild Legacy Root Node Regex
-    legacyRootNodes = new RegExp([
+    vocabularyRoots = new RegExp([
       '\\b(',
-      Object.keys(legacyVocabularies).join('|').replace('-', '\\-'),
+      Object.keys(vocabularies).join('|').replace('-', '\\-'),
       ')\\b'].join('')
     );
   };
