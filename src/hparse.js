@@ -102,7 +102,7 @@ var global = window || (module && module.exports);
         url = propertyParsers.p(el);
       }
 
-      if(settings.validateUrlFormats && !regexen.URL.test(url)) {
+      if(settings.validateUrlFormats && !matches(url, regexen.URL)) {
         return undefined;
       }
       else {
@@ -118,8 +118,7 @@ var global = window || (module && module.exports);
         dt = Parser.parseDateTimeValuePattern(el) || propertyParsers.p(el);
       }
       // TODO: clean up ISO format? Is there anything that can be done for this?
-
-      if (settings.forceValidDates && !regexen.ISOFULL.test(dt)) {
+      if (settings.forceValidDates && !matches(dt, regexen.ISOFULL)) {
         return undefined;
       }
       else {
@@ -138,6 +137,11 @@ var global = window || (module && module.exports);
     return el.textContent || el.innerText;
   }
 
+  function matches (str, regex) {
+    regex.lastIndex = 0;
+    return regex.test(str);
+  }
+
   // Walk an element tree for properties
   // But, there's special behaviour to skip pieces of the tree if they are
   // themselves microformats.
@@ -145,7 +149,9 @@ var global = window || (module && module.exports);
   // indexes:
   // obj: the object to write properties to
   // depth: are we at the root of a format?
-  function parseObjectTree (el, results, obj, depth) {
+  // legacyVocab: The vocabulary mapping for the current v1 microformat of `obj`
+  // legacyRegex: The regular expression matching properties of `legacyVocab`
+  function parseObjectTree (el, results, obj, depth, legacyVocab, legacyRegex) {
 
     var n = el;
     var className;
@@ -154,12 +160,19 @@ var global = window || (module && module.exports);
     var values;
     var subobject;
     var types;
-    var type;
-    var property;
     var relCounter;
 
     results = results || { standalone: [], all: [], byId: {} };
     depth = depth || 0;
+
+    // If we're parsing µf1, create the dynamic property regex:
+    if (settings.parseV1Microformats && legacyVocab && !legacyRegex) {
+      legacyRegex = new RegExp([
+        '\\b(',
+        Object.keys(legacyVocab).join('|').replace('-', '\\-'),
+        ')\\b'].join('')
+      );
+    }
 
     while (n) {
 
@@ -169,15 +182,10 @@ var global = window || (module && module.exports);
       }
 
       className = n.className || "";
-      relValues = n.rel || "";
       values = {}; // already parsed values (by type) (saves doing p- twice for two properties)
       subobject = undefined;
 
-      if (settings.parseV1Microformats ) {
-        className = mapLegacyProperties(className, obj && obj.types);
-      }
-
-      matchedProperties = regexen.PROPERTY.test(className);
+      matchedProperties = matches(className, regexen.PROPERTY);
 
       // If a new microformat, parse it as an opaque blob:
       if ((types = className.match(regexen.OBJECT))) {
@@ -197,56 +205,50 @@ var global = window || (module && module.exports);
             assignValue(subobject, 'photo', propertyParsers.u(n.children[0]));
           }
         }
+        else subobject = undefined;
+      }
+      else if (settings.parseV1Microformats && (types = className.match(legacyRootNodes))) {
+        subobject = parseObjectTree(
+          n.firstChild,
+          results,
+          createObject(types.map(function (format) {
+            return legacyVocabularies[format].root;
+          })),
+          depth + 1,
+          [].concat(types.map(function (format) {
+            return legacyVocabularies[format].properties;
+          }))
+        );
+        // TODO: Will we need a post-processor callback for v1 formats into v2?
+        // types.forEach(function (format) {
+        //   legacyVocabularies[format].postProcess && legacyVocabularies[format].postProcess(subobject);
+        // }
+      }
 
-        // Index newly parsed object:
-        if (subobject) {
-          results.all.push(subobject);
+      // Index the newly parsed object:
+      if (types && subobject) {
+        results.all.push(subobject);
 
-          // If this didn't match any properties, and doesn't have a container
-          // microformat, add it to the standalone microformats index:
-          if (!obj || !matchedProperties) results.standalone.push(subobject);
+        // If this didn't match any properties, and doesn't have a container
+        // microformat, add it to the standalone microformats index:
+        if (!obj || !matchedProperties) results.standalone.push(subobject);
 
-          // Also index objects by ID (used by itemref and include-pattern)
-          if (el.id) results.byID[el.id] = subobject;
-        }
+        // Also index objects by ID (used by itemref and include-pattern)
+        if (el.id) results.byID[el.id] = subobject;
       }
 
       // Continue: Property assignments
-      regexen.PROPERTY.lastIndex = 0; // reset regex mach position
-      while (className && (match = regexen.PROPERTY.exec(className))) {
-        type = match[1];
-        property = match[2];
-
-        // If we haven't already extracted a value for this type:
-        if (!values[type]) {
-          // All properties themselves need to be arrays.
-          values[type] = propertyParsers[type] && propertyParsers[type].call(this, n);
-        }
-
-        if (values[type]) {
-          if ('p' == type) {
-            // For any p- objects, extract text value (from p handler) AND append the mfo
-            assignValue(obj, property, values[type], subobject);
-          }
-          else {
-            assignValue(obj, property, values[type]);
-          }
+      if (legacyRegex) {
+        legacyRegex.lastIndex = 0;
+        while (className && (match = legacyRegex.exec(className))) {
+          match = legacyVocab[match].split('-', 2);
+          parseProperty(obj, match[0], match[1], values, subobject);
         }
       }
-
-      // Continue: Parse rel values as properties
-      if (settings.parseRelAttr) {
-        relValues = relValues.split(" ");
-        for (relCounter = 0; (rel = relValues[relCounter]); relCounter++) {
-
-          // TODO: IMPLEMENTATION: Will class properties override rel properties? Combine?
-          if (obj.properties[rel]) {
-            continue;
-          }
-          else {
-            values['rel'] = values['rel'] || propertyParsers['rel'].call(this, n);
-            assignValue(obj, rel, values['rel']);
-          }
+      else {
+        regexen.PROPERTY.lastIndex = 0; // reset regex mach position
+        while (className && (match = regexen.PROPERTY.exec(className))) {
+          parseProperty(obj, match[1], match[2], values, subobject);
         }
       }
 
@@ -268,6 +270,8 @@ var global = window || (module && module.exports);
       n = depth && n.nextSibling;
     }
 
+    // If we're deep, return the object for nested assignment, if we're back
+    // at the surface, return all the results.
     return depth ? obj : results;
   }
 
@@ -331,27 +335,38 @@ var global = window || (module && module.exports);
   };
 
   Parser.defineLegacyVocabulary = function (mapTo, format) {
-    vocabularies[mapTo] = format;
-    regenerateVocabMap();
+    format.roots.forEach(function (className) {
+      legacyVocabularies[className] = format.properties;
+      legacyVocabularies[className].root = mapTo;
+    });
+
+    // Rebuild Legacy Root Node Regex
+    legacyRootNodes = new RegExp([
+      '\\b(',
+      Object.keys(legacyVocabularies).join('|').replace('-', '\\-'),
+      ')\\b'].join('')
+    );
   };
 
   // Find all p-value children and return them
-  Parser.parseValuePattern = function (el, depth) {
+  Parser.parseValuePattern = function (el, parseAs) {
     var values = [];
     var n = el.firstChild;
-    depth = depth || 0;
+    parseAs = propertyParsers.hasOwnProperty(parseAs) ? parseAs : 'p';
 
     while (n) {
-      if (n.nodeType !== Node.ELEMENT_NODE) continue;
-
+      if (n.nodeType !== Node.ELEMENT_NODE) {
+        n = n.nextSibling;
+        continue;
+      }
       // If class="value"
-      if (regexen.VALUE.test(n.className)) {
-        values.push(propertyParsers.p(n));
+      if (matches(n.className, regexen.VALUE)) {
+        values.push(propertyParsers[parseAs](n));
       }
       // If this itself isn't another property, then continue down the
       // tree for values
-      if (!regexen.PROPERTY.test(n.className)) {
-        values.concat(Parser.parseValuePattern(n, depth+1));
+      else if (!matches(n.className, regexen.PROPERTY)) {
+        values.concat(Parser.parseValuePattern(n, parseAs));
       }
       n = n.nextSibling;
     }
@@ -361,30 +376,28 @@ var global = window || (module && module.exports);
   // Parse first-child-value-title
   Parser.parseValueTitlePattern = function (el) {
     var vt = el.children.length && el.children[0];
-    return vt && regexen.VALUETITLE.test(vt.className) && vt.title;
+    return vt && matches(vt.className, regexen.VALUETITLE) && vt.title;
   };
 
   // Collects value class pattern descendents, and concatinates them to make an
   // ISO date string.
   Parser.parseDateTimeValuePattern = function (el) {
-    var values = Parser.parseValuePattern(el);
     var date;
     var time;
     var tz;
     var timestamp;
-    var v;
 
-    for (v in values) {
-      if (regexen.ISODATE.test(v)) {
+    Parser.parseValuePattern(el, 'dt').forEach(function (v) {
+      if (matches(v, regexen.ISODATE)) {
         date = date || v;
       }
-      else if (regexen.ISOTIME.test(v)) {
+      else if (matches(v, regexen.ISOTIME)) {
         time = time || v;
       }
-      else if (regexen.ISOTZ.test(v)) {
+      else if (matches(v, regexen.ISOTZ)) {
         tz = tz || v;
       }
-    }
+    });
 
     if (date) {
       timestamp = date;
